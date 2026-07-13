@@ -1,0 +1,16 @@
+from app.router import create_crud_router
+
+from .dto import CollectedStampCreate, CollectedStampPatch, CollectedStampResponse
+from .service import get_collected_stamp_service
+
+router = create_crud_router(
+    prefix="/api/collected-stamps",
+    tag="Collected stamps",
+    create_model=CollectedStampCreate,
+    patch_model=CollectedStampPatch,
+    response_model=CollectedStampResponse,
+    service_dependency=get_collected_stamp_service,
+    read_access="user",
+    write_access="user",
+)
+
