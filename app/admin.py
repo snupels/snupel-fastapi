@@ -13,10 +13,9 @@ from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import RedirectResponse
 
-from .auth.service import password_hasher
 from .config import admins
-from .database import SessionLocal, engine
-from .mail import send_mail
+from .config.database import SessionLocal, engine
+from .deps.auth import LoginUser, sign_access_token, verify_access_token
 from .models import (
     Activity,
     Badge,
@@ -29,7 +28,8 @@ from .models import (
     Stamp,
     User,
 )
-from .security import LoginUser, sign_access_token, verify_access_token
+from .services.auth import password_hasher
+from .services.mail import send_mail
 
 OTP_EXPIRES_IN = 600
 OTP_RESEND_AFTER = 60

@@ -3,15 +3,15 @@ from datetime import datetime
 import pytest
 from fastapi.testclient import TestClient
 
-from app.activities.service import get_activity_service
-from app.badges.service import get_badge_service
-from app.collected_badges.service import get_collected_badge_service
-from app.collected_stamps.service import get_collected_stamp_service
-from app.courses.service import get_course_service
-from app.errors import ApiError
+from app.deps.auth import LoginUser, sign_access_token
+from app.exceptions import ApiError
 from app.main import app
-from app.passports.service import get_passport_service
-from app.security import LoginUser, sign_access_token
+from app.services.activity import get_activity_service
+from app.services.badge import get_badge_service
+from app.services.collected_badge import get_collected_badge_service
+from app.services.collected_stamp import get_collected_stamp_service
+from app.services.course import get_course_service
+from app.services.passport import get_passport_service
 
 NOW = datetime(2026, 1, 1).isoformat()
 

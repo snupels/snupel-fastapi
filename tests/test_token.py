@@ -1,4 +1,4 @@
-from app.security import LoginUser, access_token_expires_in, sign_access_token, verify_access_token
+from app.deps.auth import LoginUser, access_token_expires_in, sign_access_token, verify_access_token
 
 
 def test_signs_verifies_and_rejects_tokens(monkeypatch):

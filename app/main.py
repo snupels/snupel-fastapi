@@ -3,14 +3,14 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from .admin import setup_admin
-from .activities.router import router as activities_router
-from .auth.router import router as auth_router
-from .badges.router import router as badges_router
-from .collected_badges.router import router as collected_badges_router
-from .collected_stamps.router import router as collected_stamps_router
-from .courses.router import router as courses_router
-from .errors import ApiError, api_error_handler
-from .passports.router import router as passports_router
+from .exceptions import ApiError, api_error_handler
+from .routes.activity import router as activities_router
+from .routes.auth import router as auth_router
+from .routes.badge import router as badges_router
+from .routes.collected_badge import router as collected_badges_router
+from .routes.collected_stamp import router as collected_stamps_router
+from .routes.course import router as courses_router
+from .routes.passport import router as passports_router
 
 app = FastAPI(
     title="Snupel API",

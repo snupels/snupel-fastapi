@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock
 
-from app.mail import send_mail
+from app.services.mail import send_mail
 
 
 def test_send_mail(monkeypatch):
@@ -8,7 +8,7 @@ def test_send_mail(monkeypatch):
     monkeypatch.setenv("MAIL_USERNAME", "daum-id")
     monkeypatch.setenv("MAIL_PASSWORD", "app-password")
     smtp = MagicMock()
-    monkeypatch.setattr("app.mail.smtplib.SMTP_SSL", smtp)
+    monkeypatch.setattr("app.services.mail.smtplib.SMTP_SSL", smtp)
 
     send_mail("user@example.com", "Welcome", "Hello")
 

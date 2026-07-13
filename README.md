@@ -28,3 +28,18 @@ uv run ruff check .
 
 관리자 인증 메일은 `MAIL_FROM`, `MAIL_USERNAME`, `MAIL_PASSWORD`를 사용하며,
 `MAIL_HOST`(기본 `smtp.daum.net`)와 `MAIL_PORT`(기본 `465`)로 SMTP 서버를 변경할 수 있습니다.
+
+## 프로젝트 구조
+
+```text
+app/
+├── config/        # 설정과 비동기 DB 세션
+├── deps/          # 인증·인가 의존성
+├── models/        # SQLAlchemy 모델
+├── repositories/  # 데이터베이스 접근
+├── routes/        # FastAPI 라우터
+├── schemas/       # Pydantic 요청·응답 스키마
+├── services/      # 비즈니스 로직과 외부 연동
+├── exceptions.py  # 공통 API 예외
+└── main.py        # 애플리케이션 진입점
+```
