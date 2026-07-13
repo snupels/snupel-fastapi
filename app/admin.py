@@ -1,4 +1,9 @@
 import os
+import hashlib
+import hmac
+import secrets
+import time
+from dataclasses import dataclass
 
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from sqlalchemy import select
@@ -6,10 +11,12 @@ from sqladmin import Admin, ModelView
 from sqladmin.authentication import AuthenticationBackend
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
+from starlette.responses import RedirectResponse
 
 from .auth.service import password_hasher
 from .config import admins
 from .database import SessionLocal, engine
+from .mail import send_mail
 from .models import (
     Activity,
     Badge,
@@ -24,10 +31,42 @@ from .models import (
 )
 from .security import LoginUser, sign_access_token, verify_access_token
 
+OTP_EXPIRES_IN = 600
+OTP_RESEND_AFTER = 60
+OTP_MAX_ATTEMPTS = 5
+
+
+@dataclass
+class PendingCode:
+    digest: str
+    expires_at: float
+    sent_at: float
+    attempts: int
+    user_id: int
+
+
+# ponytail: process-local OTP storage; move to Redis when running multiple API instances.
+pending_codes: dict[str, PendingCode] = {}
+
 
 class AdminAuth(AuthenticationBackend):
-    async def login(self, request: Request) -> bool:
+    def __init__(self, secret_key: str) -> None:
+        super().__init__(
+            secret_key,
+            same_site="lax",
+            https_only=os.getenv("ENVIRONMENT") == "production",
+        )
+        self.otp_key = secret_key.encode()
+
+    def _digest(self, code: str) -> str:
+        return hmac.new(self.otp_key, code.encode(), hashlib.sha256).hexdigest()
+
+    async def login(self, request: Request) -> bool | RedirectResponse:
         form = await request.form()
+        pending_email = request.session.get("pending_admin_email")
+        if pending_email:
+            return self._verify_code(request, pending_email, str(form.get("code", "")))
+
         email = str(form.get("username", "")).strip().lower()
         password = str(form.get("password", ""))
         if not password or email not in admins():
@@ -43,10 +82,55 @@ class AdminAuth(AuthenticationBackend):
         except (InvalidHashError, VerifyMismatchError):
             return False
 
-        request.session["token"] = sign_access_token(LoginUser(user.id, user.email))[0]
+        now = time.monotonic()
+        pending = pending_codes.get(email)
+        if pending and pending.expires_at > now:
+            if pending.attempts >= OTP_MAX_ATTEMPTS:
+                return False
+            if now - pending.sent_at < OTP_RESEND_AFTER:
+                request.session["pending_admin_email"] = email
+                return RedirectResponse("/admin/login", status_code=302)
+
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        await run_in_threadpool(
+            send_mail,
+            email,
+            "Snupel 관리자 로그인 인증 코드",
+            f"인증 코드는 {code}입니다. 10분 이내에 입력해 주세요.",
+        )
+        pending_codes[email] = PendingCode(
+            digest=self._digest(code),
+            expires_at=now + OTP_EXPIRES_IN,
+            sent_at=now,
+            attempts=pending.attempts if pending and pending.expires_at > now else 0,
+            user_id=user.id,
+        )
+        request.session["pending_admin_email"] = email
+        return RedirectResponse("/admin/login", status_code=302)
+
+    def _verify_code(self, request: Request, email: str, code: str) -> bool:
+        pending = pending_codes.get(email)
+        if (
+            not pending
+            or email not in admins()
+            or pending.expires_at <= time.monotonic()
+            or pending.attempts >= OTP_MAX_ATTEMPTS
+        ):
+            pending_codes.pop(email, None)
+            request.session.pop("pending_admin_email", None)
+            return False
+
+        pending.attempts += 1
+        if not hmac.compare_digest(pending.digest, self._digest(code.strip())):
+            return False
+
+        request.session.pop("pending_admin_email", None)
+        pending_codes.pop(email, None)
+        request.session["token"] = sign_access_token(LoginUser(pending.user_id, email))[0]
         return True
 
     async def logout(self, request: Request) -> bool:
+        pending_codes.pop(request.session.get("pending_admin_email", ""), None)
         request.session.clear()
         return True
 

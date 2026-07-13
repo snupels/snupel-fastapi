@@ -22,6 +22,9 @@ uv run ruff check .
 ```
 
 - Swagger UI: `/docs`
-- Admin UI: `/admin` (`ADMIN_EMAILS`에 등록된 일반 로그인 계정)
+- Admin UI: `/admin` (`ADMIN_EMAILS` 계정의 비밀번호 + 이메일 인증 코드)
 - OpenAPI JSON: `/api/docs`
 - Health check: `/api/health`
+
+관리자 인증 메일은 `MAIL_FROM`, `MAIL_USERNAME`, `MAIL_PASSWORD`를 사용하며,
+`MAIL_HOST`(기본 `smtp.daum.net`)와 `MAIL_PORT`(기본 `465`)로 SMTP 서버를 변경할 수 있습니다.

@@ -1,0 +1,32 @@
+{% extends "sqladmin/base.html" %}
+{% block body %}
+<div class="d-flex align-items-center justify-content-center vh-100">
+  <form class="col-lg-4 col-md-6 card card-md" action="{{ url_for('admin:login') }}" method="POST" autocomplete="off">
+    <div class="card-body">
+      <h2 class="card-title text-center mb-4">Snupel Admin</h2>
+      {% if request.session.get("pending_admin_email") %}
+      <p class="text-secondary">{{ request.session.get("pending_admin_email") }}로 보낸 인증 코드를 입력하세요.</p>
+      <div class="mb-3">
+        <label class="form-label">인증 코드</label>
+        <input name="code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+          autocomplete="one-time-code" class="form-control{% if error %} is-invalid{% endif %}" autofocus required>
+        {% if error %}<div class="invalid-feedback">코드가 올바르지 않거나 만료되었습니다.</div>{% endif %}
+      </div>
+      <button type="submit" class="btn btn-primary w-100">확인</button>
+      <a href="{{ url_for('admin:logout') }}" class="btn btn-link w-100 mt-2">다른 계정으로 로그인</a>
+      {% else %}
+      <div class="mb-3">
+        <label class="form-label">이메일</label>
+        <input name="username" type="email" class="form-control{% if error %} is-invalid{% endif %}" required autofocus>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">비밀번호</label>
+        <input name="password" type="password" class="form-control{% if error %} is-invalid{% endif %}" required>
+        {% if error %}<div class="invalid-feedback">로그인 정보를 확인해 주세요.</div>{% endif %}
+      </div>
+      <button type="submit" class="btn btn-primary w-100">인증 코드 받기</button>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}
