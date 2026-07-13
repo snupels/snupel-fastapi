@@ -1,18 +1,18 @@
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import SocialAccount, User
 
 
 class AuthRepository:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    def find_user_by_email(self, email: str) -> User | None:
-        return self.session.scalar(select(User).where(User.email == email))
+    async def find_user_by_email(self, email: str) -> User | None:
+        return await self.session.scalar(select(User).where(User.email == email))
 
-    def find_social_user(self, provider: str, provider_user_id: str) -> User | None:
-        return self.session.scalar(
+    async def find_social_user(self, provider: str, provider_user_id: str) -> User | None:
+        return await self.session.scalar(
             select(User)
             .join(SocialAccount, SocialAccount.user_id == User.id)
             .where(
@@ -21,7 +21,9 @@ class AuthRepository:
             )
         )
 
-    def create_user(self, *, email: str, password_hash: str | None, birth_date=None, gender=None) -> User:
+    async def create_user(
+        self, *, email: str, password_hash: str | None, birth_date=None, gender=None
+    ) -> User:
         user = User(
             email=email,
             password_hash=password_hash,
@@ -29,11 +31,13 @@ class AuthRepository:
             gender=gender,
         )
         self.session.add(user)
-        self.session.flush()
-        self.session.refresh(user)
+        await self.session.flush()
+        await self.session.refresh(user)
         return user
 
-    def create_social_account(self, *, user_id: int, provider: str, provider_user_id: str) -> None:
+    async def create_social_account(
+        self, *, user_id: int, provider: str, provider_user_id: str
+    ) -> None:
         self.session.add(
             SocialAccount(
                 user_id=user_id,
@@ -41,5 +45,4 @@ class AuthRepository:
                 provider_user_id=provider_user_id,
             )
         )
-        self.session.flush()
-
+        await self.session.flush()

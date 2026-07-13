@@ -13,33 +13,33 @@ class CollectedRepository:
         self.target_model = target_model
         self.target_field = target_field
 
-    def list(self, user_id: int) -> list:
+    async def list(self, user_id: int) -> list:
         statement = (
             select(self.model)
             .join(Passport, self.model.passport_id == Passport.id)
             .where(Passport.user_id == user_id)
             .order_by(self.model.id)
         )
-        return list(self.session.scalars(statement))
+        return list(await self.session.scalars(statement))
 
-    def get(self, item_id: int, user_id: int):
-        return self.session.scalar(
+    async def get(self, item_id: int, user_id: int):
+        return await self.session.scalar(
             select(self.model)
             .join(Passport, self.model.passport_id == Passport.id)
             .where(self.model.id == item_id, Passport.user_id == user_id)
         )
 
-    def passport_owned(self, passport_id: int, user_id: int) -> bool:
-        return self.session.scalar(
+    async def passport_owned(self, passport_id: int, user_id: int) -> bool:
+        return await self.session.scalar(
             select(Passport.id).where(Passport.id == passport_id, Passport.user_id == user_id)
         ) is not None
 
-    def target_exists(self, target_id: int) -> bool:
-        return self.session.get(self.target_model, target_id) is not None
+    async def target_exists(self, target_id: int) -> bool:
+        return await self.session.get(self.target_model, target_id) is not None
 
-    def duplicate(self, passport_id: int, target_id: int, except_id: int = 0) -> bool:
+    async def duplicate(self, passport_id: int, target_id: int, except_id: int = 0) -> bool:
         target = getattr(self.model, self.target_field)
-        return self.session.scalar(
+        return await self.session.scalar(
             select(self.model.id).where(
                 self.model.passport_id == passport_id,
                 target == target_id,
@@ -47,23 +47,23 @@ class CollectedRepository:
             )
         ) is not None
 
-    def create(self, passport_id: int, target_id: int):
+    async def create(self, passport_id: int, target_id: int):
         row = self.model(passport_id=passport_id, **{self.target_field: target_id})
         self.session.add(row)
-        self.session.flush()
-        self.session.refresh(row)
+        await self.session.flush()
+        await self.session.refresh(row)
         return row
 
-    def update(self, row, passport_id: int, target_id: int):
+    async def update(self, row, passport_id: int, target_id: int):
         row.passport_id = passport_id
         setattr(row, self.target_field, target_id)
-        self.session.flush()
-        self.session.refresh(row)
+        await self.session.flush()
+        await self.session.refresh(row)
         return row
 
-    def remove(self, row) -> None:
-        self.session.delete(row)
-        self.session.flush()
+    async def remove(self, row) -> None:
+        await self.session.delete(row)
+        await self.session.flush()
 
 
 class CollectedService:
@@ -77,50 +77,51 @@ class CollectedService:
             raise ApiError(401, "unauthorized", "Login is required.")
         return user
 
-    def _found(self, item_id: int, user: LoginUser):
-        row = self.repository.get(item_id, user.id)
+    async def _found(self, item_id: int, user: LoginUser):
+        row = await self.repository.get(item_id, user.id)
         if not row:
             raise ApiError(404, "not_found", f"Collected {self.noun.lower()} not found.")
         return row
 
-    def _valid(self, passport_id: int, target_id: int, owner_id: int, except_id: int = 0):
-        if not self.repository.passport_owned(passport_id, owner_id):
+    async def _valid(
+        self, passport_id: int, target_id: int, owner_id: int, except_id: int = 0
+    ):
+        if not await self.repository.passport_owned(passport_id, owner_id):
             raise ApiError(404, "not_found", "Passport not found.")
-        if not self.repository.target_exists(target_id):
+        if not await self.repository.target_exists(target_id):
             raise ApiError(404, "not_found", f"{self.noun} not found.")
-        if self.repository.duplicate(passport_id, target_id, except_id):
+        if await self.repository.duplicate(passport_id, target_id, except_id):
             raise ApiError(409, "conflict", f"{self.noun} already collected.")
 
-    def list(self, user: LoginUser | None):
-        return self.repository.list(self._user(user).id)
+    async def list(self, user: LoginUser | None):
+        return await self.repository.list(self._user(user).id)
 
-    def get(self, item_id: int, user: LoginUser | None):
-        return self._found(item_id, self._user(user))
+    async def get(self, item_id: int, user: LoginUser | None):
+        return await self._found(item_id, self._user(user))
 
-    def create(self, body, user: LoginUser | None):
+    async def create(self, body, user: LoginUser | None):
         actor = self._user(user)
         target_id = getattr(body, self.repository.target_field)
-        self._valid(body.passport_id, target_id, actor.id)
+        await self._valid(body.passport_id, target_id, actor.id)
         try:
-            return self.repository.create(body.passport_id, target_id)
+            return await self.repository.create(body.passport_id, target_id)
         except IntegrityError as error:
             raise ApiError(409, "conflict", f"{self.noun} already collected.") from error
 
-    def update(self, item_id: int, body, user: LoginUser | None):
+    async def update(self, item_id: int, body, user: LoginUser | None):
         actor = self._user(user)
-        row = self._found(item_id, actor)
+        row = await self._found(item_id, actor)
         passport_id = body.passport_id if "passport_id" in body.model_fields_set else row.passport_id
         target_id = (
             getattr(body, self.repository.target_field)
             if self.repository.target_field in body.model_fields_set
             else getattr(row, self.repository.target_field)
         )
-        self._valid(passport_id, target_id, actor.id, item_id)
+        await self._valid(passport_id, target_id, actor.id, item_id)
         try:
-            return self.repository.update(row, passport_id, target_id)
+            return await self.repository.update(row, passport_id, target_id)
         except IntegrityError as error:
             raise ApiError(409, "conflict", f"{self.noun} already collected.") from error
 
-    def remove(self, item_id: int, user: LoginUser | None) -> None:
-        self.repository.remove(self._found(item_id, self._user(user)))
-
+    async def remove(self, item_id: int, user: LoginUser | None) -> None:
+        await self.repository.remove(await self._found(item_id, self._user(user)))

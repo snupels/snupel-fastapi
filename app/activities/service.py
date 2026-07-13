@@ -1,5 +1,5 @@
 from fastapi import Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
 from app.service import CrudService
@@ -7,6 +7,5 @@ from app.service import CrudService
 from .repository import ActivityRepository
 
 
-def get_activity_service(session: Session = Depends(get_session)) -> CrudService:
+def get_activity_service(session: AsyncSession = Depends(get_session)) -> CrudService:
     return CrudService(ActivityRepository(session), "Activity")
-

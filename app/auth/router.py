@@ -48,13 +48,13 @@ def provider_from(value: str) -> AuthProvider:
 
 
 @router.post("/signup", response_model=AuthResponse, status_code=201)
-def signup(body: SignupRequest, service: AuthService = Depends(get_auth_service)):
-    return service.signup(body)
+async def signup(body: SignupRequest, service: AuthService = Depends(get_auth_service)):
+    return await service.signup(body)
 
 
 @router.post("/login", response_model=AuthResponse)
-def login(body: LoginRequest, service: AuthService = Depends(get_auth_service)):
-    return service.login(body)
+async def login(body: LoginRequest, service: AuthService = Depends(get_auth_service)):
+    return await service.login(body)
 
 
 @router.get("/oauth/{provider}/authorize", response_model=OAuthAuthorizeResponse)
@@ -83,7 +83,7 @@ def authorize(
 
 
 @router.post("/oauth/{provider}/login", response_model=AuthResponse)
-def oauth_login(
+async def oauth_login(
     provider: str,
     body: OAuthLoginRequest,
     request: Request,
@@ -94,6 +94,6 @@ def oauth_login(
     expected_state = request.cookies.get(f"oauth_state_{provider}")
     if not expected_state or body.state != expected_state:
         raise ApiError(400, "invalid_oauth_state", "Invalid OAuth state.")
-    result = service.oauth_login(parsed_provider, body)
+    result = await service.oauth_login(parsed_provider, body)
     response.delete_cookie(f"oauth_state_{provider}", path=f"/api/auth/oauth/{provider}/login")
     return result

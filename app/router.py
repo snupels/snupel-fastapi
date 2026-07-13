@@ -24,45 +24,44 @@ def create_crud_router(
     write_actor = dependencies[write_access]
 
     @router.get("", response_model=list[response_model])
-    def list_items(
+    async def list_items(
         actor: LoginUser | None = Depends(read_actor),
         service: Any = Depends(service_dependency),
     ):
-        return service.list(actor)
+        return await service.list(actor)
 
     @router.post("", response_model=response_model, status_code=status.HTTP_201_CREATED)
-    def create_item(
+    async def create_item(
         body: create_model,
         actor: LoginUser | None = Depends(write_actor),
         service: Any = Depends(service_dependency),
     ):
-        return service.create(body, actor)
+        return await service.create(body, actor)
 
     @router.get("/{item_id}", response_model=response_model)
-    def get_item(
+    async def get_item(
         item_id: int = Path(gt=0),
         actor: LoginUser | None = Depends(read_actor),
         service: Any = Depends(service_dependency),
     ):
-        return service.get(item_id, actor)
+        return await service.get(item_id, actor)
 
     @router.patch("/{item_id}", response_model=response_model)
-    def update_item(
+    async def update_item(
         body: patch_model,
         item_id: int = Path(gt=0),
         actor: LoginUser | None = Depends(write_actor),
         service: Any = Depends(service_dependency),
     ):
-        return service.update(item_id, body, actor)
+        return await service.update(item_id, body, actor)
 
     @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-    def remove_item(
+    async def remove_item(
         item_id: int = Path(gt=0),
         actor: LoginUser | None = Depends(write_actor),
         service: Any = Depends(service_dependency),
     ) -> Response:
-        service.remove(item_id, actor)
+        await service.remove(item_id, actor)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     return router
-

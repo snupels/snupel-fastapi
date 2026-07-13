@@ -21,7 +21,7 @@ class FakeService:
         self.result = result
         self.error = error
 
-    def create(self, _body, _actor):
+    async def create(self, _body, _actor):
         if self.error:
             raise self.error
         return self.result
@@ -116,4 +116,3 @@ def test_health_and_openapi():
     with TestClient(app) as client:
         assert client.get("/api/health").json() == {"status": "ok"}
         assert client.get("/api/docs").status_code == 200
-

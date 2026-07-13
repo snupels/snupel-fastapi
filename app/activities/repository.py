@@ -1,11 +1,11 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Activity
 from app.repository import CrudRepository, dumped
 
 
 class ActivityRepository(CrudRepository):
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: AsyncSession) -> None:
         super().__init__(session, Activity, self._values)
 
     @staticmethod
