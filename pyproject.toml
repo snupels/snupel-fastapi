@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
   "alembic>=1.16,<2",
   "argon2-cffi>=25,<26",
-  "asyncmy>=0.2,<1",
+  "aiomysql>=0.3,<1",
   "email-validator>=2.2,<3",
   "fastapi>=0.116,<1",
   "httpx>=0.28,<1",

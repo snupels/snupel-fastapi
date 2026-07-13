@@ -4,7 +4,7 @@ import os
 def database_url() -> str:
     return os.getenv(
         "DATABASE_URL",
-        "mysql+asyncmy://snupel:snupel@127.0.0.1:3306/snupel",
+        "mysql+aiomysql://snupel:snupel@127.0.0.1:3306/snupel",
     )
 
 
