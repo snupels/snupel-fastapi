@@ -22,6 +22,6 @@ uv run ruff check .
 ```
 
 - Swagger UI: `/docs`
+- Admin UI: `/admin` (`ADMIN_EMAILS`에 등록된 일반 로그인 계정)
 - OpenAPI JSON: `/api/docs`
 - Health check: `/api/health`
-

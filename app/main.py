@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from .admin import setup_admin
 from .activities.router import router as activities_router
 from .auth.router import router as auth_router
 from .badges.router import router as badges_router
@@ -18,6 +19,7 @@ app = FastAPI(
     openapi_url="/api/docs",
 )
 app.add_exception_handler(ApiError, api_error_handler)
+setup_admin(app)
 
 
 @app.exception_handler(RequestValidationError)
@@ -47,4 +49,3 @@ for router in (
     collected_stamps_router,
 ):
     app.include_router(router)
-
