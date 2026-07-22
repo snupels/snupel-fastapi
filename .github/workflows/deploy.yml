@@ -48,4 +48,4 @@ jobs:
           rsync -az --delete --exclude .git --exclude .env --exclude .venv \
             ./ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/"
           ssh "$SSH_USER@$SSH_HOST" \
-            "cd '$DEPLOY_PATH' && set -a && source .env && set +a && test -n \"\${DATABASE_URL:-}\" && ~/.local/bin/uv sync --frozen --no-dev && ~/.local/bin/uv run alembic upgrade head && sudo install -m 644 deploy/snupel-fastapi.service /etc/systemd/system/snupel-fastapi.service && sudo systemctl daemon-reload && sudo systemctl enable --now snupel-fastapi"
+            "cd '$DEPLOY_PATH' && set -a && source .env && set +a && test -n \"\${DATABASE_URL:-}\" && ~/.local/bin/uv sync --frozen --no-dev && ~/.local/bin/uv run alembic upgrade head && sudo install -m 644 deploy/snupel-fastapi.service deploy/snupel-tourism-sync.service deploy/snupel-tourism-sync.timer /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable snupel-fastapi snupel-tourism-sync.timer && sudo systemctl restart snupel-fastapi snupel-tourism-sync.timer && sudo systemctl restart snupel-tourism-sync.service"
