@@ -66,7 +66,7 @@ CASES = [
     (
         "/api/collected-stamps",
         get_collected_stamp_service,
-        False,
+        True,
         {"passport_id": 1, "stamp_id": 2},
         {"id": 1, "passport_id": 1, "stamp_id": 2, "collected_at": NOW},
     ),

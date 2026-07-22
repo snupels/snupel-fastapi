@@ -15,6 +15,7 @@ dependencies = [
   "uvicorn[standard]>=0.35,<1",
   "sqladmin>=0.27,<1",
   "itsdangerous>=2.2,<3",
+  "boto3>=1.40,<2",
 ]
 
 [dependency-groups]

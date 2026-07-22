@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum as SqlEnum, ForeignKey, Index, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, ForeignKey, Index, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.mysql import BIGINT, INTEGER
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -16,6 +16,9 @@ class Course(TimestampMixin, Base):
     representative_image_url: Mapped[str | None] = mapped_column(Text)
     estimated_duration_minutes: Mapped[int | None] = mapped_column(INTEGER(unsigned=True))
     theme: Mapped[CourseTheme] = mapped_column(SqlEnum(CourseTheme))
+    title: Mapped[str | None] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    is_published: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
 
 class CourseStamp(Base):
@@ -33,3 +36,4 @@ class CourseStamp(Base):
         BIGINT(unsigned=True), ForeignKey("stamps.id", ondelete="CASCADE")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+    position: Mapped[int] = mapped_column(INTEGER(unsigned=True), default=0, server_default="0")

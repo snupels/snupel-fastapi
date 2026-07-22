@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Snupel tourism sync daily
+
+[Timer]
+OnCalendar=*-*-* 04:00:00 Asia/Seoul
+Persistent=true
+RandomizedDelaySec=300
+Unit=snupel-tourism-sync.service
+
+[Install]
+WantedBy=timers.target

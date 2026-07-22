@@ -26,6 +26,7 @@ from .models import (
     Passport,
     SocialAccount,
     Stamp,
+    StampSubmission,
     User,
 )
 from .services.auth import password_hasher
@@ -172,6 +173,12 @@ class CollectedStampAdmin(DefaultAdmin, model=CollectedStamp):
     pass
 
 
+class StampSubmissionAdmin(DefaultAdmin, model=StampSubmission):
+    can_create = False
+    can_edit = False
+    can_delete = False
+
+
 class BadgeAdmin(DefaultAdmin, model=Badge):
     pass
 
@@ -206,6 +213,7 @@ def setup_admin(app) -> Admin:
         ActivityAdmin,
         StampAdmin,
         CollectedStampAdmin,
+        StampSubmissionAdmin,
         BadgeAdmin,
         CollectedBadgeAdmin,
         CourseAdmin,

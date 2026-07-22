@@ -29,6 +29,19 @@ uv run ruff check .
 관리자 인증 메일은 `MAIL_FROM`, `MAIL_USERNAME`, `MAIL_PASSWORD`를 사용하며,
 `MAIL_HOST`(기본 `smtp.daum.net`)와 `MAIL_PORT`(기본 `465`)로 SMTP 서버를 변경할 수 있습니다.
 
+## 관광 데이터와 미션 인증
+
+공공데이터포털의 디코딩 인증키를 `DATA_GO_KR_SERVICE_KEY`에 설정한 뒤 강원 관광정보를
+동기화합니다.
+
+```bash
+uv run python -m app.jobs.sync_tourism
+```
+
+운영 서버의 매일 실행 예시는 `deploy/snupel-tourism-sync.service`와
+`deploy/snupel-tourism-sync.timer`에 있습니다. 인증사진은 비공개 S3 호환 저장소 설정을,
+맞춤코스는 `OPENROUTER_API_KEY`와 `OPENROUTER_MODEL`을 사용합니다.
+
 ## 프로젝트 구조
 
 ```text

@@ -1,7 +1,9 @@
-from sqlalchemy import select
+from __future__ import annotations
+
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Passport
+from app.models import CollectedStamp, Course, CourseStamp, Passport
 
 
 class PassportRepository:
@@ -29,3 +31,43 @@ class PassportRepository:
     async def remove(self, row: Passport) -> None:
         await self.session.delete(row)
         await self.session.flush()
+
+    async def mission_progress(self, passport_id: int) -> list[dict]:
+        total = (
+            select(func.count(CourseStamp.id))
+            .where(CourseStamp.course_id == Course.id)
+            .correlate(Course)
+            .scalar_subquery()
+        )
+        collected = (
+            select(func.count(CollectedStamp.id))
+            .join(CourseStamp, CourseStamp.stamp_id == CollectedStamp.stamp_id)
+            .where(
+                CourseStamp.course_id == Course.id,
+                CollectedStamp.passport_id == passport_id,
+            )
+            .correlate(Course)
+            .scalar_subquery()
+        )
+        rows = (
+            await self.session.execute(
+                select(
+                    Course.id.label("course_id"),
+                    Course.title,
+                    Course.theme,
+                    total.label("total_stamps"),
+                    collected.label("collected_stamps"),
+                )
+                .where(Course.is_published.is_(True))
+                .order_by(Course.id)
+            )
+        ).mappings()
+        return [
+            dict(row)
+            | {
+                "theme": row["theme"].value,
+                "completed": row["total_stamps"] > 0
+                and row["collected_stamps"] == row["total_stamps"],
+            }
+            for row in rows
+        ]

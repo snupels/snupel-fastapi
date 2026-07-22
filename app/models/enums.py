@@ -12,6 +12,7 @@ class ActivityCategory(str, Enum):
     sports = "sports"
     event = "event"
     festival = "festival"
+    tourism = "tourism"
 
 
 class CourseTheme(str, Enum):
@@ -19,3 +20,9 @@ class CourseTheme(str, Enum):
     thrill = "thrill"
     photo_spot = "photo_spot"
     stamp = "stamp"
+
+
+class SubmissionStatus(str, Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"

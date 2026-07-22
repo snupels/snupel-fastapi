@@ -50,6 +50,10 @@ class PassportService:
     async def remove(self, item_id: int, user: LoginUser | None) -> None:
         await self.repository.remove(await self._found(item_id, self._user(user)))
 
+    async def missions(self, item_id: int, user: LoginUser | None):
+        passport = await self._found(item_id, self._user(user))
+        return await self.repository.mission_progress(passport.id)
+
 
 def get_passport_service(session: AsyncSession = Depends(get_session)) -> PassportService:
     return PassportService(PassportRepository(session))

@@ -11,6 +11,9 @@ class CourseCreate(Dto):
     representative_image_url: AnyHttpUrl | None = None
     estimated_duration_minutes: int | None = Field(default=None, gt=0)
     theme: CourseTheme
+    title: str | None = Field(default=None, max_length=255)
+    description: str | None = None
+    is_published: bool = False
 
 
 class CoursePatch(Dto):
@@ -18,6 +21,9 @@ class CoursePatch(Dto):
     representative_image_url: AnyHttpUrl | None = None
     estimated_duration_minutes: int | None = Field(default=None, gt=0)
     theme: CourseTheme | None = None
+    title: str | None = Field(default=None, max_length=255)
+    description: str | None = None
+    is_published: bool | None = None
 
     @model_validator(mode="after")
     def not_empty(self) -> Self:
@@ -31,3 +37,6 @@ class CourseResponse(TimestampedResponse):
     representative_image_url: str | None = Field(serialization_alias="representativeImageUrl")
     estimated_duration_minutes: int | None = Field(serialization_alias="estimatedDurationMinutes")
     theme: CourseTheme
+    title: str | None = None
+    description: str | None = None
+    is_published: bool = Field(default=False, serialization_alias="isPublished")

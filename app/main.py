@@ -11,6 +11,9 @@ from .routes.collected_badge import router as collected_badges_router
 from .routes.collected_stamp import router as collected_stamps_router
 from .routes.course import router as courses_router
 from .routes.passport import router as passports_router
+from .routes.recommendation import router as recommendations_router
+from .routes.stamp_submission import router as stamp_submissions_router
+from .routes.weather import router as weather_router
 
 app = FastAPI(
     title="Snupel API",
@@ -47,5 +50,8 @@ for router in (
     passports_router,
     collected_badges_router,
     collected_stamps_router,
+    stamp_submissions_router,
+    recommendations_router,
+    weather_router,
 ):
     app.include_router(router)
