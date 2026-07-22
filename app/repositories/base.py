@@ -10,8 +10,9 @@ class CrudRepository:
         self.model = model
         self.values = values
 
-    async def list(self) -> list:
-        return list(await self.session.scalars(select(self.model).order_by(self.model.id)))
+    async def list(self, *, offset: int = 0, limit: int = 20) -> list:
+        query = select(self.model).order_by(self.model.id).offset(offset).limit(limit)
+        return list(await self.session.scalars(query))
 
     async def get(self, item_id: int):
         return await self.session.get(self.model, item_id)

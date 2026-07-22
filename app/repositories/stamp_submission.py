@@ -69,22 +69,28 @@ class StampSubmissionRepository:
         await self.session.refresh(row)
         return row
 
-    async def list_user(self, user_id: int):
+    async def list_user(self, user_id: int, *, offset: int = 0, limit: int = 20):
         return list(
             await self.session.scalars(
                 select(StampSubmission)
                 .join(Passport, Passport.id == StampSubmission.passport_id)
                 .where(Passport.user_id == user_id)
                 .order_by(StampSubmission.id.desc())
+                .offset(offset)
+                .limit(limit)
             )
         )
 
-    async def list_status(self, status: SubmissionStatus):
+    async def list_status(
+        self, status: SubmissionStatus, *, offset: int = 0, limit: int = 20
+    ):
         return list(
             await self.session.scalars(
                 select(StampSubmission)
                 .where(StampSubmission.status == status)
                 .order_by(StampSubmission.id)
+                .offset(offset)
+                .limit(limit)
             )
         )
 

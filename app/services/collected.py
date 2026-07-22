@@ -32,8 +32,10 @@ class CollectedService:
         if await self.repository.duplicate(passport_id, target_id, except_id):
             raise ApiError(409, "conflict", f"{self.noun} already collected.")
 
-    async def list(self, user: LoginUser | None):
-        return await self.repository.list(self._user(user).id)
+    async def list(
+        self, user: LoginUser | None, *, offset: int = 0, limit: int = 20
+    ):
+        return await self.repository.list(self._user(user).id, offset=offset, limit=limit)
 
     async def get(self, item_id: int, user: LoginUser | None):
         return await self._found(item_id, self._user(user))

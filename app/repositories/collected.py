@@ -10,12 +10,14 @@ class CollectedRepository:
         self.target_model = target_model
         self.target_field = target_field
 
-    async def list(self, user_id: int) -> list:
+    async def list(self, user_id: int, *, offset: int = 0, limit: int = 20) -> list:
         statement = (
             select(self.model)
             .join(Passport, self.model.passport_id == Passport.id)
             .where(Passport.user_id == user_id)
             .order_by(self.model.id)
+            .offset(offset)
+            .limit(limit)
         )
         return list(await self.session.scalars(statement))
 

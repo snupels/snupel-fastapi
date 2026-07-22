@@ -10,8 +10,17 @@ class PassportRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def list(self, user_id: int) -> list[Passport]:
-        return list(await self.session.scalars(select(Passport).where(Passport.user_id == user_id)))
+    async def list(
+        self, user_id: int, *, offset: int = 0, limit: int = 20
+    ) -> list[Passport]:
+        query = (
+            select(Passport)
+            .where(Passport.user_id == user_id)
+            .order_by(Passport.id)
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(await self.session.scalars(query))
 
     async def get(self, item_id: int, user_id: int) -> Passport | None:
         return await self.session.scalar(
@@ -32,7 +41,9 @@ class PassportRepository:
         await self.session.delete(row)
         await self.session.flush()
 
-    async def mission_progress(self, passport_id: int) -> list[dict]:
+    async def mission_progress(
+        self, passport_id: int, *, offset: int = 0, limit: int = 20
+    ) -> list[dict]:
         total = (
             select(func.count(CourseStamp.id))
             .where(CourseStamp.course_id == Course.id)
@@ -60,6 +71,8 @@ class PassportRepository:
                 )
                 .where(Course.is_published.is_(True))
                 .order_by(Course.id)
+                .offset(offset)
+                .limit(limit)
             )
         ).mappings()
         return [

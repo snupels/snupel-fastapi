@@ -33,10 +33,14 @@ class ActivityRepository(CrudRepository):
             or_(Activity.ends_at.is_(None), Activity.ends_at >= datetime.now()),
         )
 
-    async def list(self) -> list[Activity]:
+    async def list(self, *, offset: int = 0, limit: int = 20) -> list[Activity]:
         return list(
             await self.session.scalars(
-                select(Activity).where(self._available()).order_by(Activity.id)
+                select(Activity)
+                .where(self._available())
+                .order_by(Activity.id)
+                .offset(offset)
+                .limit(limit)
             )
         )
 
@@ -53,44 +57,51 @@ class ActivityRepository(CrudRepository):
         theme: str | None,
         mission: bool | None,
         categories: tuple[str, ...] = ("sports",),
-        limit: int = 100,
+        offset: int = 0,
+        limit: int = 20,
     ):
+        activity_ids = (
+            select(Activity.id)
+            .where(Activity.category.in_(categories), self._available())
+            .order_by(Activity.id)
+        )
+        published_course = (
+            select(CourseStamp.id)
+            .select_from(Stamp)
+            .join(CourseStamp, CourseStamp.stamp_id == Stamp.id)
+            .join(Course, Course.id == CourseStamp.course_id)
+            .where(
+                Stamp.activity_id == Activity.id,
+                Course.is_published.is_(True),
+            )
+            .correlate(Activity)
+        )
+        if region:
+            activity_ids = activity_ids.where(Activity.region == region)
+        if sport:
+            activity_ids = activity_ids.where(Activity.sport_name == sport)
+        if theme:
+            activity_ids = activity_ids.where(
+                published_course.where(Course.theme == theme).exists()
+            )
+        if mission is True:
+            activity_ids = activity_ids.where(published_course.exists())
+        elif mission is False:
+            activity_ids = activity_ids.where(~published_course.exists())
+        activity_ids = activity_ids.offset(offset).limit(limit).subquery()
         query = (
             select(Activity, Course.theme)
+            .join(activity_ids, activity_ids.c.id == Activity.id)
             .outerjoin(Stamp, Stamp.activity_id == Activity.id)
             .outerjoin(CourseStamp, CourseStamp.stamp_id == Stamp.id)
             .outerjoin(
                 Course,
                 and_(Course.id == CourseStamp.course_id, Course.is_published.is_(True)),
             )
-            .where(Activity.category.in_(categories), self._available())
             .order_by(Activity.id)
-            .limit(limit)
         )
-        if region:
-            query = query.where(Activity.region == region)
-        if sport:
-            query = query.where(Activity.sport_name == sport)
         if theme:
             query = query.where(Course.theme == theme)
-        if mission is True:
-            query = query.where(
-                exists().where(
-                    Stamp.activity_id == Activity.id,
-                    CourseStamp.stamp_id == Stamp.id,
-                    Course.id == CourseStamp.course_id,
-                    Course.is_published.is_(True),
-                )
-            )
-        elif mission is False:
-            query = query.where(
-                ~exists().where(
-                    Stamp.activity_id == Activity.id,
-                    CourseStamp.stamp_id == Stamp.id,
-                    Course.id == CourseStamp.course_id,
-                    Course.is_published.is_(True),
-                )
-            )
         return (await self.session.execute(query)).all()
 
     async def recommendation_candidates(

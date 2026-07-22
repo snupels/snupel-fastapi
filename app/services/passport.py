@@ -24,8 +24,10 @@ class PassportService:
             raise ApiError(404, "not_found", "Passport not found.")
         return row
 
-    async def list(self, user: LoginUser | None):
-        return await self.repository.list(self._user(user).id)
+    async def list(
+        self, user: LoginUser | None, *, offset: int = 0, limit: int = 20
+    ):
+        return await self.repository.list(self._user(user).id, offset=offset, limit=limit)
 
     async def get(self, item_id: int, user: LoginUser | None):
         return await self._found(item_id, self._user(user))
@@ -50,9 +52,18 @@ class PassportService:
     async def remove(self, item_id: int, user: LoginUser | None) -> None:
         await self.repository.remove(await self._found(item_id, self._user(user)))
 
-    async def missions(self, item_id: int, user: LoginUser | None):
+    async def missions(
+        self,
+        item_id: int,
+        user: LoginUser | None,
+        *,
+        offset: int = 0,
+        limit: int = 20,
+    ):
         passport = await self._found(item_id, self._user(user))
-        return await self.repository.mission_progress(passport.id)
+        return await self.repository.mission_progress(
+            passport.id, offset=offset, limit=limit
+        )
 
 
 def get_passport_service(session: AsyncSession = Depends(get_session)) -> PassportService:

@@ -1,8 +1,9 @@
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Path, Response, status
 
 from app.deps.auth import LoginUser, optional_user, require_admin, require_user
+from app.schemas.common import Pagination
 
 Access = Literal["public", "user", "admin"]
 
@@ -25,10 +26,11 @@ def create_crud_router(
 
     @router.get("", response_model=list[response_model])
     async def list_items(
+        pagination: Annotated[Pagination, Depends()],
         actor: LoginUser | None = Depends(read_actor),
         service: Any = Depends(service_dependency),
     ):
-        return await service.list(actor)
+        return await service.list(actor, offset=pagination.offset, limit=pagination.size)
 
     @router.post("", response_model=response_model, status_code=status.HTTP_201_CREATED)
     async def create_item(

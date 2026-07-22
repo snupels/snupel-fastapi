@@ -52,11 +52,17 @@ class StampSubmissionService:
             )
         } | {"proof_url": self.storage.proof_url(row.object_key)}
 
-    async def list_user(self, user: LoginUser):
-        return [self._response(row) for row in await self.repository.list_user(user.id)]
+    async def list_user(
+        self, user: LoginUser, *, offset: int = 0, limit: int = 20
+    ):
+        rows = await self.repository.list_user(user.id, offset=offset, limit=limit)
+        return [self._response(row) for row in rows]
 
-    async def list_admin(self, status: SubmissionStatus):
-        return [self._response(row) for row in await self.repository.list_status(status)]
+    async def list_admin(
+        self, status: SubmissionStatus, *, offset: int = 0, limit: int = 20
+    ):
+        rows = await self.repository.list_status(status, offset=offset, limit=limit)
+        return [self._response(row) for row in rows]
 
     async def review(self, item_id: int, reviewer: LoginUser, reason: str | None = None):
         row = await self.repository.get(item_id)

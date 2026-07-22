@@ -6,8 +6,8 @@ class CrudService:
         self.repository = repository
         self.name = name
 
-    async def list(self, _user=None):
-        return await self.repository.list()
+    async def list(self, _user=None, *, offset: int = 0, limit: int = 20):
+        return await self.repository.list(offset=offset, limit=limit)
 
     async def get(self, item_id: int, _user=None):
         row = await self.repository.get(item_id)

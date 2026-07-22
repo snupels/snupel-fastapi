@@ -1,11 +1,14 @@
+import asyncio
 from datetime import datetime
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.dialects import mysql
 
 from app.deps.auth import LoginUser, sign_access_token
 from app.exceptions import ApiError
 from app.main import app
+from app.repositories.activity import ActivityRepository
 from app.services.activity import get_activity_service
 from app.services.badge import get_badge_service
 from app.services.collected_badge import get_collected_badge_service
@@ -24,6 +27,10 @@ class FakeService:
     async def create(self, _body, _actor):
         if self.error:
             raise self.error
+        return self.result
+
+    async def list(self, _actor, *, offset, limit):
+        self.pagination = (offset, limit)
         return self.result
 
 
@@ -116,3 +123,57 @@ def test_health_and_openapi():
     with TestClient(app) as client:
         assert client.get("/api/health").json() == {"status": "ok"}
         assert client.get("/api/docs").status_code == 200
+
+
+def test_list_pagination_defaults_limits_and_openapi():
+    service = FakeService(result=[])
+    app.dependency_overrides[get_badge_service] = lambda: service
+
+    with TestClient(app) as client:
+        assert client.get("/api/badges").json() == []
+        assert service.pagination == (0, 20)
+        assert client.get("/api/badges?page=3&size=10").status_code == 200
+        assert service.pagination == (20, 10)
+        assert client.get("/api/badges?size=101").status_code == 400
+
+        for operations in client.get("/api/docs").json()["paths"].values():
+            operation = operations.get("get")
+            if not operation:
+                continue
+            schema = operation["responses"].get("200", {}).get("content", {}).get(
+                "application/json", {}
+            ).get("schema", {})
+            if schema.get("type") != "array":
+                continue
+            parameters = {item["name"]: item["schema"] for item in operation["parameters"]}
+            assert parameters["page"]["default"] == 1
+            assert parameters["size"]["default"] == 20
+            assert parameters["size"]["maximum"] == 100
+
+
+def test_activity_pagination_compiles_for_mysql_with_mission_filters():
+    statements = []
+
+    class Result:
+        def all(self):
+            return []
+
+    class Session:
+        async def execute(self, statement):
+            statements.append(statement)
+            return Result()
+
+    repository = ActivityRepository(Session())
+    for mission in (True, False):
+        asyncio.run(
+            repository.explore(
+                region=None, sport=None, theme=None, mission=mission, offset=20, limit=20
+            )
+        )
+
+    sql = [
+        str(statement.compile(dialect=mysql.dialect(), compile_kwargs={"literal_binds": True}))
+        for statement in statements
+    ]
+    assert all("LIMIT 20, 20" in statement for statement in sql)
+    assert "EXISTS" in sql[0] and "NOT (EXISTS" in sql[1]
