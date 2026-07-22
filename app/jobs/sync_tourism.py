@@ -18,7 +18,7 @@ MOUNTAIN_URL = (
 
 def items(payload: dict) -> tuple[list[dict], int]:
     body = payload["response"]["body"]
-    values = body.get("items", {}).get("item", [])
+    values = (body.get("items") or {}).get("item", [])
     if isinstance(values, dict):
         values = [values]
     return values or [], int(body.get("totalCount", len(values or [])))

@@ -26,6 +26,7 @@ def test_tourism_pagination_and_normalization():
     sync = Sync(None, None, "key")
     assert asyncio.run(sync._pages("url", {})) == [{"id": 1}, {"id": 2}, {"id": 3}]
     assert items({"response": {"body": {"items": {"item": {"id": 1}}, "totalCount": 1}}}) == ([{"id": 1}], 1)
+    assert items({"response": {"body": {"items": "", "totalCount": 0}}}) == ([], 0)
 
     trail = {"routeIdx": "7", "crsKorNm": "해파랑길", "crsLat": "37.5", "crsLon": "128.2"}
     mountain = {"mtnId": "8", "mtnNm": "설악산", "addrNm": "강원특별자치도 속초시"}
