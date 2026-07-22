@@ -160,7 +160,7 @@ class TourismSync:
         )
         trails = [
             row
-            for row in await self._pages(DURUNUBI_URL, {"MobileOS": "ETC", "MobileApp": "Snupel"})
+            for row in await self._pages(DURUNUBI_URL, common)
             if in_gangwon(row)
         ]
         mountains = [

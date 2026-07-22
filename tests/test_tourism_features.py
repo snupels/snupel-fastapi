@@ -35,6 +35,22 @@ def test_tourism_pagination_and_normalization():
     assert mountain_item(mountain)["place_name"] == "설악산"
 
 
+def test_tourism_sync_requests_durunubi_json():
+    calls = []
+
+    class Sync(TourismSync):
+        async def _pages(self, url, params):
+            calls.append((url, params))
+            return [{"code": "32", "name": "강원"}] if url.endswith("/areaCode2") else []
+
+    class Repository:
+        async def sync_source(self, *_):
+            return 0
+
+    asyncio.run(Sync(None, Repository(), "key").run())
+    assert next(params for url, params in calls if "Durunubi" in url)["_type"] == "json"
+
+
 def test_weather_grid_base_time_and_cache(monkeypatch):
     assert grid(37.5665, 126.9780) == (60, 127)
     assert base_datetime(datetime(2026, 7, 21, 1, 30)) == datetime(2026, 7, 20, 23)
