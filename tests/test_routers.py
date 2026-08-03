@@ -125,6 +125,20 @@ def test_health_and_openapi():
         assert client.get("/api/docs").status_code == 200
 
 
+def test_cors_allows_sportspassport_kr():
+    with TestClient(app) as client:
+        response = client.options(
+            "/api/health",
+            headers={
+                "Origin": "https://sportspassport.kr",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "https://sportspassport.kr"
+
+
 def test_list_pagination_defaults_limits_and_openapi():
     service = FakeService(result=[])
     app.dependency_overrides[get_badge_service] = lambda: service
