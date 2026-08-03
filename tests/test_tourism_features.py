@@ -100,7 +100,7 @@ def test_weather_grid_base_time_and_cache(monkeypatch):
     assert Client.calls == 1
 
 
-def test_recommendation_uses_only_safe_candidates_and_validates_ai(monkeypatch):
+def test_recommendation_uses_only_safe_candidates_and_validates_ai(monkeypatch, caplog):
     candidate = SimpleNamespace(
         id=4,
         place_name="설악산",
@@ -166,6 +166,7 @@ def test_recommendation_uses_only_safe_candidates_and_validates_ai(monkeypatch):
     fallback = asyncio.run(RecommendationService(Repository(), Weather()).recommend(body))
     assert fallback["used_ai"] is False
     assert fallback["stops"][0]["activity_id"] == 4
+    assert "OpenRouter recommendation fallback" in caplog.text
 
 
 def test_stamp_submission_requires_owned_published_mission_and_prefix():
