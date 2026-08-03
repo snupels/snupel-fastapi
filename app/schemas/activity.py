@@ -5,7 +5,7 @@ from typing import Self
 from pydantic import AnyHttpUrl, Field, model_validator
 
 from app.models import ActivityCategory
-from app.schemas.common import Dto, TimestampedResponse
+from app.schemas.common import Dto, OrmDto, TimestampedResponse
 
 
 class ActivityCreate(Dto):
@@ -78,4 +78,14 @@ class ActivityResponse(TimestampedResponse):
 
 class ActivityExploreResponse(ActivityResponse):
     themes: list[str]
+    has_mission: bool = Field(serialization_alias="hasMission")
+
+
+class ActivityMapResponse(OrmDto):
+    id: int = Field(gt=0)
+    category: ActivityCategory
+    place_name: str | None = Field(serialization_alias="placeName")
+    sport_name: str | None = Field(serialization_alias="sportName")
+    latitude: float
+    longitude: float
     has_mission: bool = Field(serialization_alias="hasMission")

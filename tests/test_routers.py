@@ -33,6 +33,10 @@ class FakeService:
         self.pagination = (offset, limit)
         return self.result
 
+    async def map_items(self, **filters):
+        self.map_filters = filters
+        return self.result
+
 
 CASES = [
     (
@@ -146,9 +150,60 @@ def test_list_pagination_defaults_limits_and_openapi():
             if schema.get("type") != "array":
                 continue
             parameters = {item["name"]: item["schema"] for item in operation["parameters"]}
+            if "page" not in parameters:
+                continue
             assert parameters["page"]["default"] == 1
             assert parameters["size"]["default"] == 20
             assert parameters["size"]["maximum"] == 100
+
+
+def test_activity_map_returns_viewport_markers_only():
+    service = FakeService(result=[
+        {
+            "id": 1,
+            "category": "sports",
+            "place_name": "서울광장",
+            "sport_name": "running",
+            "latitude": 37.5665,
+            "longitude": 126.9780,
+            "has_mission": True,
+        }
+    ])
+    app.dependency_overrides[get_activity_service] = lambda: service
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/activities/map?south=37.5&west=126.9&north=37.6&east=127.0&category=sports"
+        )
+
+    assert response.status_code == 200
+    assert response.json() == [{
+        "id": 1,
+        "category": "sports",
+        "placeName": "서울광장",
+        "sportName": "running",
+        "latitude": 37.5665,
+        "longitude": 126.978,
+        "hasMission": True,
+    }]
+    assert service.map_filters == {
+        "south": 37.5,
+        "west": 126.9,
+        "north": 37.6,
+        "east": 127.0,
+        "category": "sports",
+        "sport": None,
+        "mission": None,
+        "limit": 300,
+    }
+
+
+def test_activity_map_rejects_inverted_bounds():
+    with TestClient(app) as client:
+        response = client.get("/api/activities/map?south=37.6&west=126.9&north=37.5&east=127.0")
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "bad_request", "message": "Invalid map bounds."}
 
 
 def test_activity_pagination_compiles_for_mysql_with_mission_filters():
@@ -157,6 +212,9 @@ def test_activity_pagination_compiles_for_mysql_with_mission_filters():
     class Result:
         def all(self):
             return []
+
+        def mappings(self):
+            return self
 
     class Session:
         async def execute(self, statement):
@@ -170,10 +228,24 @@ def test_activity_pagination_compiles_for_mysql_with_mission_filters():
                 region=None, sport=None, theme=None, mission=mission, offset=20, limit=20
             )
         )
+    asyncio.run(
+        repository.map_items(
+            south=37.5,
+            west=126.9,
+            north=37.6,
+            east=127.0,
+            category=None,
+            sport=None,
+            mission=None,
+            limit=300,
+        )
+    )
 
     sql = [
         str(statement.compile(dialect=mysql.dialect(), compile_kwargs={"literal_binds": True}))
         for statement in statements
     ]
-    assert all("LIMIT 20, 20" in statement for statement in sql)
+    assert all("LIMIT 20, 20" in statement for statement in sql[:2])
     assert "EXISTS" in sql[0] and "NOT (EXISTS" in sql[1]
+    assert "IS NOT NULL" in sql[2]
+    assert "BETWEEN 37.5 AND 37.6" in sql[2]

@@ -47,6 +47,9 @@ class ActivityService(CrudService):
                 item["has_mission"] = True
         return list(items.values())
 
+    async def map_items(self, **filters):
+        return await self.repository.map_items(**filters)
+
 
 def get_activity_service(session: AsyncSession = Depends(get_session)) -> ActivityService:
     return ActivityService(ActivityRepository(session), "Activity")
