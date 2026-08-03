@@ -10,27 +10,21 @@ class CollectedRepository:
         self.target_model = target_model
         self.target_field = target_field
 
-    async def list(self, user_id: int, *, offset: int = 0, limit: int = 20) -> list:
+    async def list(self, *, offset: int = 0, limit: int = 20) -> list:
         statement = (
             select(self.model)
-            .join(Passport, self.model.passport_id == Passport.id)
-            .where(Passport.user_id == user_id)
             .order_by(self.model.id)
             .offset(offset)
             .limit(limit)
         )
         return list(await self.session.scalars(statement))
 
-    async def get(self, item_id: int, user_id: int):
-        return await self.session.scalar(
-            select(self.model)
-            .join(Passport, self.model.passport_id == Passport.id)
-            .where(self.model.id == item_id, Passport.user_id == user_id)
-        )
+    async def get(self, item_id: int):
+        return await self.session.get(self.model, item_id)
 
-    async def passport_owned(self, passport_id: int, user_id: int) -> bool:
+    async def passport_exists(self, passport_id: int) -> bool:
         return await self.session.scalar(
-            select(Passport.id).where(Passport.id == passport_id, Passport.user_id == user_id)
+            select(Passport.id).where(Passport.id == passport_id)
         ) is not None
 
     async def target_exists(self, target_id: int) -> bool:

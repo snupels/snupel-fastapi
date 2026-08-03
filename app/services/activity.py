@@ -21,6 +21,7 @@ class ActivityService(CrudService):
                         "representative_image_url",
                         "sport_name",
                         "region",
+                        "sigun",
                         "place_name",
                         "latitude",
                         "longitude",
@@ -46,6 +47,9 @@ class ActivityService(CrudService):
                     item["themes"].append(value)
                 item["has_mission"] = True
         return list(items.values())
+
+    async def map_items(self, **filters):
+        return await self.repository.map_items(**filters)
 
 
 def get_activity_service(session: AsyncSession = Depends(get_session)) -> ActivityService:
