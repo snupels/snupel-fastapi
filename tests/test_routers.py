@@ -15,6 +15,7 @@ from app.services.collected_badge import get_collected_badge_service
 from app.services.collected_stamp import get_collected_stamp_service
 from app.services.course import get_course_service
 from app.services.passport import get_passport_service
+from app.services.stamp_submission import get_stamp_submission_service
 
 NOW = datetime(2026, 1, 1).isoformat()
 
@@ -29,7 +30,7 @@ class FakeService:
             raise self.error
         return self.result
 
-    async def list(self, _actor, *, offset, limit):
+    async def list(self, _actor=None, *, offset, limit):
         self.pagination = (offset, limit)
         return self.result
 
@@ -59,14 +60,14 @@ CASES = [
     (
         "/api/passports",
         get_passport_service,
-        False,
+        True,
         {"user_id": 7},
         {"id": 1, "user_id": 7, "created_at": NOW, "updated_at": NOW},
     ),
     (
         "/api/collected-badges",
         get_collected_badge_service,
-        False,
+        True,
         {"passport_id": 1, "badge_id": 2},
         {"id": 1, "passport_id": 1, "badge_id": 2, "collected_at": NOW},
     ),
@@ -149,6 +150,24 @@ def test_list_pagination_defaults_limits_and_openapi():
             assert parameters["page"]["default"] == 1
             assert parameters["size"]["default"] == 20
             assert parameters["size"]["maximum"] == 100
+
+
+@pytest.mark.parametrize(
+    ("path", "dependency"),
+    [
+        ("/api/badges", get_badge_service),
+        ("/api/activities", get_activity_service),
+        ("/api/courses", get_course_service),
+        ("/api/passports", get_passport_service),
+        ("/api/collected-badges", get_collected_badge_service),
+        ("/api/collected-stamps", get_collected_stamp_service),
+        ("/api/stamp-submissions", get_stamp_submission_service),
+    ],
+)
+def test_data_lists_are_public(path, dependency):
+    app.dependency_overrides[dependency] = lambda: FakeService(result=[])
+    with TestClient(app) as client:
+        assert client.get(path).status_code == 200
 
 
 def test_activity_pagination_compiles_for_mysql_with_mission_filters():
