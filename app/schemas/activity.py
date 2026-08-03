@@ -1,6 +1,5 @@
 from datetime import datetime
-from typing import Any
-from typing import Self
+from typing import Any, Self
 
 from pydantic import AnyHttpUrl, Field, model_validator
 
@@ -26,6 +25,14 @@ class ActivityCreate(Dto):
     metadata: dict[str, Any] | None = None
     last_synced_at: datetime | None = None
     is_active: bool = True
+
+    @model_validator(mode="after")
+    def sport_category(self) -> Self:
+        if self.category == ActivityCategory.sports and not self.sport_name:
+            raise ValueError("sport_name is required for sports activities")
+        if self.category != ActivityCategory.sports and self.sport_name is not None:
+            raise ValueError("sport_name is only allowed for sports activities")
+        return self
 
 
 class ActivityPatch(Dto):
