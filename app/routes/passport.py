@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import Depends, Path
 
-from app.deps.auth import require_user
+from app.deps.auth import optional_user
 from app.routes.base import create_crud_router
 
 from app.schemas.passport import MissionProgress, PassportCreate, PassportPatch, PassportResponse
@@ -16,8 +16,6 @@ router = create_crud_router(
     patch_model=PassportPatch,
     response_model=PassportResponse,
     service_dependency=get_passport_service,
-    read_access="user",
-    write_access="user",
 )
 
 
@@ -25,7 +23,7 @@ router = create_crud_router(
 async def passport_missions(
     pagination: Annotated[Pagination, Depends()],
     item_id: int = Path(gt=0),
-    actor=Depends(require_user),
+    actor=Depends(optional_user),
     service=Depends(get_passport_service),
 ):
     return await service.missions(

@@ -3,7 +3,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.database import get_session
-from app.deps.auth import LoginUser
 from app.exceptions import ApiError
 from app.repositories.passport import PassportRepository
 
@@ -12,55 +11,45 @@ class PassportService:
     def __init__(self, repository: PassportRepository) -> None:
         self.repository = repository
 
-    @staticmethod
-    def _user(user: LoginUser | None) -> LoginUser:
-        if not user:
-            raise ApiError(401, "unauthorized", "Login is required.")
-        return user
-
-    async def _found(self, item_id: int, user: LoginUser):
-        row = await self.repository.get(item_id, user.id)
+    async def _found(self, item_id: int):
+        row = await self.repository.get(item_id)
         if not row:
             raise ApiError(404, "not_found", "Passport not found.")
         return row
 
-    async def list(
-        self, user: LoginUser | None, *, offset: int = 0, limit: int = 20
-    ):
-        return await self.repository.list(self._user(user).id, offset=offset, limit=limit)
+    async def list(self, _user=None, *, offset: int = 0, limit: int = 20):
+        return await self.repository.list(offset=offset, limit=limit)
 
-    async def get(self, item_id: int, user: LoginUser | None):
-        return await self._found(item_id, self._user(user))
+    async def get(self, item_id: int, _user=None):
+        return await self._found(item_id)
 
-    async def create(self, body, user: LoginUser | None):
-        actor = self._user(user)
-        if body.user_id != actor.id:
-            raise ApiError(403, "forbidden", "A passport can only belong to you.")
-        if await self.repository.get_by_user(actor.id):
+    async def create(self, body, _user=None):
+        if await self.repository.get_by_user(body.user_id):
             raise ApiError(409, "conflict", "Passport already exists.")
         try:
-            return await self.repository.create(actor.id)
+            return await self.repository.create(body.user_id)
         except IntegrityError as error:
             raise ApiError(409, "conflict", "Passport already exists.") from error
 
-    async def update(self, item_id: int, body, user: LoginUser | None):
-        actor = self._user(user)
-        if body.user_id != actor.id:
-            raise ApiError(403, "forbidden", "A passport can only belong to you.")
-        return await self._found(item_id, actor)
+    async def update(self, item_id: int, body, _user=None):
+        row = await self._found(item_id)
+        existing = await self.repository.get_by_user(body.user_id)
+        if existing and existing.id != item_id:
+            raise ApiError(409, "conflict", "Passport already exists.")
+        return await self.repository.update(row, body.user_id)
 
-    async def remove(self, item_id: int, user: LoginUser | None) -> None:
-        await self.repository.remove(await self._found(item_id, self._user(user)))
+    async def remove(self, item_id: int, _user=None) -> None:
+        await self.repository.remove(await self._found(item_id))
 
     async def missions(
         self,
         item_id: int,
-        user: LoginUser | None,
+        _user=None,
         *,
         offset: int = 0,
         limit: int = 20,
     ):
-        passport = await self._found(item_id, self._user(user))
+        passport = await self._found(item_id)
         return await self.repository.mission_progress(
             passport.id, offset=offset, limit=limit
         )
