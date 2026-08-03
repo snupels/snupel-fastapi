@@ -9,12 +9,14 @@ from app.deps.auth import LoginUser, sign_access_token
 from app.exceptions import ApiError
 from app.main import app
 from app.repositories.activity import ActivityRepository
+from app.models import StampCatalog
 from app.services.activity import get_activity_service
 from app.services.badge import get_badge_service
 from app.services.collected_badge import get_collected_badge_service
 from app.services.collected_stamp import get_collected_stamp_service
 from app.services.course import get_course_service
 from app.services.passport import get_passport_service
+from app.services.stamp_catalog import get_stamp_catalog_service
 
 NOW = datetime(2026, 1, 1).isoformat()
 
@@ -123,6 +125,28 @@ def test_health_and_openapi():
     with TestClient(app) as client:
         assert client.get("/api/health").json() == {"status": "ok"}
         assert client.get("/api/docs").status_code == 200
+
+
+def test_stamp_catalog_is_public_and_serves_images():
+    service = FakeService(result=[
+        {"id": 1, "region_ko": "춘천", "region_en": "CHUNCHEON", "sport_ko": "산악", "sport_en": "MOUNTAIN", "color": "#2F6B4F", "image_url": "https://assets.example.com/stamps/01-chuncheon-mountain.svg", "created_at": NOW, "updated_at": NOW}
+    ])
+    app.dependency_overrides[get_stamp_catalog_service] = lambda: service
+
+    with TestClient(app) as client:
+        response = client.get("/api/stamp-catalog")
+        assert response.status_code == 200
+        assert response.json()[0]["imageUrl"].endswith("01-chuncheon-mountain.svg")
+
+
+def test_stamp_catalog_builds_public_s3_url(monkeypatch):
+    monkeypatch.setenv("S3_BUCKET", "sportspassport-asset")
+    monkeypatch.delenv("STAMP_IMAGE_BASE_URL", raising=False)
+    stamp = StampCatalog(image_key="stamps/01-chuncheon-mountain.svg")
+    assert stamp.image_url == (
+        "https://sportspassport-asset.s3.ap-northeast-2.amazonaws.com/"
+        "stamps/01-chuncheon-mountain.svg"
+    )
 
 
 def test_list_pagination_defaults_limits_and_openapi():
