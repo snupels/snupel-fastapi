@@ -167,7 +167,13 @@ def test_activity_pagination_compiles_for_mysql_with_mission_filters():
     for mission in (True, False):
         asyncio.run(
             repository.explore(
-                region=None, sport=None, theme=None, mission=mission, offset=20, limit=20
+                region=None,
+                sigun="강릉시",
+                sport=None,
+                theme=None,
+                mission=mission,
+                offset=20,
+                limit=20,
             )
         )
 
@@ -176,4 +182,21 @@ def test_activity_pagination_compiles_for_mysql_with_mission_filters():
         for statement in statements
     ]
     assert all("LIMIT 20, 20" in statement for statement in sql)
+    assert all("activities.sigun = '강릉시'" in statement for statement in sql)
     assert "EXISTS" in sql[0] and "NOT (EXISTS" in sql[1]
+
+
+def test_activity_explore_forwards_sigun_filter():
+    service = FakeService(result=[])
+
+    async def explore(**filters):
+        service.filters = filters
+        return []
+
+    service.explore = explore
+    app.dependency_overrides[get_activity_service] = lambda: service
+
+    with TestClient(app) as client:
+        assert client.get("/api/sports?sigun=강릉시").status_code == 200
+
+    assert service.filters["sigun"] == "강릉시"

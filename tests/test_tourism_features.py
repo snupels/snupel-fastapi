@@ -7,7 +7,14 @@ import pytest
 
 from app.deps.auth import LoginUser
 from app.exceptions import ApiError
-from app.jobs.sync_tourism import TourismSync, durunubi_item, in_gangwon, items, mountain_item
+from app.jobs.sync_tourism import (
+    TourismSync,
+    durunubi_item,
+    in_gangwon,
+    items,
+    mountain_item,
+    tourism_item,
+)
 from app.models import ActivityCategory, CollectedStamp, CourseTheme, SubmissionStatus
 from app.repositories.stamp_submission import StampSubmissionRepository
 from app.schemas.recommendation import CourseRecommendationRequest
@@ -28,9 +35,19 @@ def test_tourism_pagination_and_normalization():
     assert items({"response": {"body": {"items": {"item": {"id": 1}}, "totalCount": 1}}}) == ([{"id": 1}], 1)
     assert items({"response": {"body": {"items": "", "totalCount": 0}}}) == ([], 0)
 
-    trail = {"routeIdx": "7", "crsKorNm": "해파랑길", "crsLat": "37.5", "crsLon": "128.2"}
+    place = {"contentid": "6", "title": "경포대", "addr1": "강원특별자치도 강릉시 경포로 365"}
+    trail = {
+        "routeIdx": "7",
+        "crsKorNm": "해파랑길",
+        "crsLat": "37.5",
+        "crsLon": "128.2",
+        "sigun": "강릉시",
+    }
     mountain = {"mtnId": "8", "mtnNm": "설악산", "addrNm": "강원특별자치도 속초시"}
     assert in_gangwon(trail)
+    assert tourism_item(place)["sigun"] == "강릉시"
+    assert durunubi_item(trail)["sigun"] == "강릉시"
+    assert mountain_item(mountain)["sigun"] == "속초시"
     assert durunubi_item(trail)["external_id"] == "7"
     assert mountain_item(mountain)["place_name"] == "설악산"
 
