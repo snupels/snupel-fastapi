@@ -15,6 +15,7 @@ from app.services.collected_badge import get_collected_badge_service
 from app.services.collected_stamp import get_collected_stamp_service
 from app.services.course import get_course_service
 from app.services.passport import get_passport_service
+from app.services.stamp_submission import get_stamp_submission_service
 
 NOW = datetime(2026, 1, 1).isoformat()
 
@@ -29,8 +30,12 @@ class FakeService:
             raise self.error
         return self.result
 
-    async def list(self, _actor, *, offset, limit):
+    async def list(self, _actor=None, *, offset, limit):
         self.pagination = (offset, limit)
+        return self.result
+
+    async def map_items(self, **filters):
+        self.map_filters = filters
         return self.result
 
 
@@ -59,14 +64,14 @@ CASES = [
     (
         "/api/passports",
         get_passport_service,
-        False,
+        True,
         {"user_id": 7},
         {"id": 1, "user_id": 7, "created_at": NOW, "updated_at": NOW},
     ),
     (
         "/api/collected-badges",
         get_collected_badge_service,
-        False,
+        True,
         {"passport_id": 1, "badge_id": 2},
         {"id": 1, "passport_id": 1, "badge_id": 2, "collected_at": NOW},
     ),
@@ -125,6 +130,20 @@ def test_health_and_openapi():
         assert client.get("/api/docs").status_code == 200
 
 
+def test_cors_allows_sportspassport_kr():
+    with TestClient(app) as client:
+        response = client.options(
+            "/api/health",
+            headers={
+                "Origin": "https://sportspassport.kr",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "https://sportspassport.kr"
+
+
 def test_list_pagination_defaults_limits_and_openapi():
     service = FakeService(result=[])
     app.dependency_overrides[get_badge_service] = lambda: service
@@ -146,9 +165,78 @@ def test_list_pagination_defaults_limits_and_openapi():
             if schema.get("type") != "array":
                 continue
             parameters = {item["name"]: item["schema"] for item in operation["parameters"]}
+            if "page" not in parameters:
+                continue
             assert parameters["page"]["default"] == 1
             assert parameters["size"]["default"] == 20
             assert parameters["size"]["maximum"] == 100
+
+
+def test_activity_map_returns_viewport_markers_only():
+    service = FakeService(result=[
+        {
+            "id": 1,
+            "category": "sports",
+            "place_name": "서울광장",
+            "sport_name": "running",
+            "latitude": 37.5665,
+            "longitude": 126.9780,
+            "has_mission": True,
+        }
+    ])
+    app.dependency_overrides[get_activity_service] = lambda: service
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/activities/map?south=37.5&west=126.9&north=37.6&east=127.0&category=sports"
+        )
+
+    assert response.status_code == 200
+    assert response.json() == [{
+        "id": 1,
+        "category": "sports",
+        "placeName": "서울광장",
+        "sportName": "running",
+        "latitude": 37.5665,
+        "longitude": 126.978,
+        "hasMission": True,
+    }]
+    assert service.map_filters == {
+        "south": 37.5,
+        "west": 126.9,
+        "north": 37.6,
+        "east": 127.0,
+        "category": "sports",
+        "sport": None,
+        "mission": None,
+        "limit": 300,
+    }
+
+
+def test_activity_map_rejects_inverted_bounds():
+    with TestClient(app) as client:
+        response = client.get("/api/activities/map?south=37.6&west=126.9&north=37.5&east=127.0")
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "bad_request", "message": "Invalid map bounds."}
+
+
+@pytest.mark.parametrize(
+    ("path", "dependency"),
+    [
+        ("/api/badges", get_badge_service),
+        ("/api/activities", get_activity_service),
+        ("/api/courses", get_course_service),
+        ("/api/passports", get_passport_service),
+        ("/api/collected-badges", get_collected_badge_service),
+        ("/api/collected-stamps", get_collected_stamp_service),
+        ("/api/stamp-submissions", get_stamp_submission_service),
+    ],
+)
+def test_data_lists_are_public(path, dependency):
+    app.dependency_overrides[dependency] = lambda: FakeService(result=[])
+    with TestClient(app) as client:
+        assert client.get(path).status_code == 200
 
 
 def test_activity_pagination_compiles_for_mysql_with_mission_filters():
@@ -157,6 +245,9 @@ def test_activity_pagination_compiles_for_mysql_with_mission_filters():
     class Result:
         def all(self):
             return []
+
+        def mappings(self):
+            return self
 
     class Session:
         async def execute(self, statement):
@@ -167,13 +258,55 @@ def test_activity_pagination_compiles_for_mysql_with_mission_filters():
     for mission in (True, False):
         asyncio.run(
             repository.explore(
-                region=None, sport=None, theme=None, mission=mission, offset=20, limit=20
+                region=None,
+                sigun="강릉시",
+                sport=None,
+                theme=None,
+                mission=mission,
+                offset=20,
+                limit=20,
             )
         )
+    asyncio.run(
+        repository.map_items(
+            south=37.5,
+            west=126.9,
+            north=37.6,
+            east=127.0,
+            category=None,
+            sport=None,
+            mission=None,
+            limit=300,
+        )
+    )
 
     sql = [
         str(statement.compile(dialect=mysql.dialect(), compile_kwargs={"literal_binds": True}))
         for statement in statements
     ]
-    assert all("LIMIT 20, 20" in statement for statement in sql)
+    assert all("LIMIT 20, 20" in statement for statement in sql[:2])
+    assert all("LIMIT 20, 20" in statement for statement in sql[:2])
+    assert all("activities.sigun = '강릉시'" in statement for statement in sql[:2])
     assert "EXISTS" in sql[0] and "NOT (EXISTS" in sql[1]
+    assert all(
+        "coalesce(activities.last_synced_at, activities.created_at) DESC" in statement
+        for statement in sql[:2]
+    )
+    assert "IS NOT NULL" in sql[2]
+    assert "BETWEEN 37.5 AND 37.6" in sql[2]
+
+
+def test_activity_explore_forwards_sigun_filter():
+    service = FakeService(result=[])
+
+    async def explore(**filters):
+        service.filters = filters
+        return []
+
+    service.explore = explore
+    app.dependency_overrides[get_activity_service] = lambda: service
+
+    with TestClient(app) as client:
+        assert client.get("/api/sports?sigun=강릉시").status_code == 200
+
+    assert service.filters["sigun"] == "강릉시"

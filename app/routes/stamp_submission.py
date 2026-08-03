@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, status
 
-from app.deps.auth import LoginUser, require_admin, require_user
+from app.deps.auth import LoginUser, optional_user, require_admin
 from app.models import SubmissionStatus
 from app.schemas.common import Pagination
 from app.schemas.stamp_submission import (
@@ -20,7 +20,7 @@ router = APIRouter(tags=["Stamp submissions"])
 @router.post("/api/stamp-submissions/upload-url", response_model=UploadUrlResponse)
 async def upload_url(
     body: UploadUrlRequest,
-    actor: LoginUser = Depends(require_user),
+    actor: LoginUser = Depends(require_admin),
     service=Depends(get_stamp_submission_service),
 ):
     return await service.upload_url(body, actor)
@@ -33,21 +33,19 @@ async def upload_url(
 )
 async def submit(
     body: StampSubmissionCreate,
-    actor: LoginUser = Depends(require_user),
+    actor: LoginUser = Depends(require_admin),
     service=Depends(get_stamp_submission_service),
 ):
     return await service.create(body, actor)
 
 
 @router.get("/api/stamp-submissions", response_model=list[StampSubmissionResponse])
-async def list_own(
+async def list_submissions(
     pagination: Annotated[Pagination, Depends()],
-    actor: LoginUser = Depends(require_user),
+    _: LoginUser | None = Depends(optional_user),
     service=Depends(get_stamp_submission_service),
 ):
-    return await service.list_user(
-        actor, offset=pagination.offset, limit=pagination.size
-    )
+    return await service.list(offset=pagination.offset, limit=pagination.size)
 
 
 @router.get("/api/admin/stamp-submissions", response_model=list[StampSubmissionResponse])
@@ -56,7 +54,7 @@ async def list_pending(
     submission_status: SubmissionStatus = Query(
         default=SubmissionStatus.pending, alias="status"
     ),
-    _: LoginUser = Depends(require_admin),
+    _: LoginUser | None = Depends(optional_user),
     service=Depends(get_stamp_submission_service),
 ):
     return await service.list_admin(
