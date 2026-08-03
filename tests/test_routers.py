@@ -177,3 +177,4 @@ def test_activity_pagination_compiles_for_mysql_with_mission_filters():
     ]
     assert all("LIMIT 20, 20" in statement for statement in sql)
     assert "EXISTS" in sql[0] and "NOT (EXISTS" in sql[1]
+    assert all("coalesce(activities.last_synced_at, activities.created_at) DESC" in statement for statement in sql)
