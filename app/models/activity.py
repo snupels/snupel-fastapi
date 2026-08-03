@@ -22,6 +22,7 @@ class Activity(TimestampMixin, Base):
     representative_image_url: Mapped[str | None] = mapped_column(Text)
     sport_name: Mapped[str | None] = mapped_column(String(100))
     region: Mapped[str | None] = mapped_column(String(100))
+    sigun: Mapped[str | None] = mapped_column(String(100))
     place_name: Mapped[str | None] = mapped_column(String(255))
     latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))

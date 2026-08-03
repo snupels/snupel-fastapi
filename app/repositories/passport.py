@@ -10,22 +10,17 @@ class PassportRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def list(
-        self, user_id: int, *, offset: int = 0, limit: int = 20
-    ) -> list[Passport]:
+    async def list(self, *, offset: int = 0, limit: int = 20) -> list[Passport]:
         query = (
             select(Passport)
-            .where(Passport.user_id == user_id)
             .order_by(Passport.id)
             .offset(offset)
             .limit(limit)
         )
         return list(await self.session.scalars(query))
 
-    async def get(self, item_id: int, user_id: int) -> Passport | None:
-        return await self.session.scalar(
-            select(Passport).where(Passport.id == item_id, Passport.user_id == user_id)
-        )
+    async def get(self, item_id: int) -> Passport | None:
+        return await self.session.get(Passport, item_id)
 
     async def get_by_user(self, user_id: int) -> Passport | None:
         return await self.session.scalar(select(Passport).where(Passport.user_id == user_id))
@@ -33,6 +28,12 @@ class PassportRepository:
     async def create(self, user_id: int) -> Passport:
         row = Passport(user_id=user_id)
         self.session.add(row)
+        await self.session.flush()
+        await self.session.refresh(row)
+        return row
+
+    async def update(self, row: Passport, user_id: int) -> Passport:
+        row.user_id = user_id
         await self.session.flush()
         await self.session.refresh(row)
         return row

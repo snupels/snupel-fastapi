@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 
 import httpx
@@ -10,6 +11,7 @@ from app.repositories.activity import ActivityRepository
 from app.services.weather import WeatherService, get_weather_service
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+logger = logging.getLogger(__name__)
 
 
 class RecommendationService:
@@ -47,7 +49,11 @@ class RecommendationService:
         )
         fallback = self._fallback(candidates, body.available_minutes)
         api_key = os.getenv("OPENROUTER_API_KEY")
-        if not api_key or not candidates:
+        if not api_key:
+            logger.warning("OpenRouter recommendation fallback: API key is not configured")
+            return {"stops": fallback, "used_ai": False}
+        if not candidates:
+            logger.warning("OpenRouter recommendation fallback: no matching candidates")
             return {"stops": fallback, "used_ai": False}
         weather = None
         located = next((item for item in candidates if item.latitude and item.longitude), None)
@@ -148,7 +154,8 @@ class RecommendationService:
             if not stops:
                 raise ValueError
             return {"stops": stops, "used_ai": True}
-        except (httpx.HTTPError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        except (httpx.HTTPError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+            logger.warning("OpenRouter recommendation fallback: %s", error, exc_info=True)
             return {"stops": fallback, "used_ai": False}
 
 

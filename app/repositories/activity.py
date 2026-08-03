@@ -53,6 +53,7 @@ class ActivityRepository(CrudRepository):
         self,
         *,
         region: str | None,
+        sigun: str | None,
         sport: str | None,
         theme: str | None,
         mission: bool | None,
@@ -78,6 +79,8 @@ class ActivityRepository(CrudRepository):
         )
         if region:
             activity_ids = activity_ids.where(Activity.region == region)
+        if sigun:
+            activity_ids = activity_ids.where(Activity.sigun == sigun)
         if sport:
             activity_ids = activity_ids.where(Activity.sport_name == sport)
         if theme:

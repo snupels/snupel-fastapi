@@ -15,6 +15,7 @@ from app.services.collected_badge import get_collected_badge_service
 from app.services.collected_stamp import get_collected_stamp_service
 from app.services.course import get_course_service
 from app.services.passport import get_passport_service
+from app.services.stamp_submission import get_stamp_submission_service
 
 NOW = datetime(2026, 1, 1).isoformat()
 
@@ -29,7 +30,7 @@ class FakeService:
             raise self.error
         return self.result
 
-    async def list(self, _actor, *, offset, limit):
+    async def list(self, _actor=None, *, offset, limit):
         self.pagination = (offset, limit)
         return self.result
 
@@ -63,14 +64,14 @@ CASES = [
     (
         "/api/passports",
         get_passport_service,
-        False,
+        True,
         {"user_id": 7},
         {"id": 1, "user_id": 7, "created_at": NOW, "updated_at": NOW},
     ),
     (
         "/api/collected-badges",
         get_collected_badge_service,
-        False,
+        True,
         {"passport_id": 1, "badge_id": 2},
         {"id": 1, "passport_id": 1, "badge_id": 2, "collected_at": NOW},
     ),
@@ -206,6 +207,24 @@ def test_activity_map_rejects_inverted_bounds():
     assert response.json() == {"error": "bad_request", "message": "Invalid map bounds."}
 
 
+@pytest.mark.parametrize(
+    ("path", "dependency"),
+    [
+        ("/api/badges", get_badge_service),
+        ("/api/activities", get_activity_service),
+        ("/api/courses", get_course_service),
+        ("/api/passports", get_passport_service),
+        ("/api/collected-badges", get_collected_badge_service),
+        ("/api/collected-stamps", get_collected_stamp_service),
+        ("/api/stamp-submissions", get_stamp_submission_service),
+    ],
+)
+def test_data_lists_are_public(path, dependency):
+    app.dependency_overrides[dependency] = lambda: FakeService(result=[])
+    with TestClient(app) as client:
+        assert client.get(path).status_code == 200
+
+
 def test_activity_pagination_compiles_for_mysql_with_mission_filters():
     statements = []
 
@@ -225,7 +244,13 @@ def test_activity_pagination_compiles_for_mysql_with_mission_filters():
     for mission in (True, False):
         asyncio.run(
             repository.explore(
-                region=None, sport=None, theme=None, mission=mission, offset=20, limit=20
+                region=None,
+                sigun="강릉시",
+                sport=None,
+                theme=None,
+                mission=mission,
+                offset=20,
+                limit=20,
             )
         )
     asyncio.run(
@@ -246,6 +271,24 @@ def test_activity_pagination_compiles_for_mysql_with_mission_filters():
         for statement in statements
     ]
     assert all("LIMIT 20, 20" in statement for statement in sql[:2])
+    assert all("LIMIT 20, 20" in statement for statement in sql[:2])
+    assert all("activities.sigun = '강릉시'" in statement for statement in sql[:2])
     assert "EXISTS" in sql[0] and "NOT (EXISTS" in sql[1]
     assert "IS NOT NULL" in sql[2]
     assert "BETWEEN 37.5 AND 37.6" in sql[2]
+
+
+def test_activity_explore_forwards_sigun_filter():
+    service = FakeService(result=[])
+
+    async def explore(**filters):
+        service.filters = filters
+        return []
+
+    service.explore = explore
+    app.dependency_overrides[get_activity_service] = lambda: service
+
+    with TestClient(app) as client:
+        assert client.get("/api/sports?sigun=강릉시").status_code == 200
+
+    assert service.filters["sigun"] == "강릉시"
