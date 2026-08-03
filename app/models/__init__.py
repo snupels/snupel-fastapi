@@ -11,6 +11,7 @@ from .enums import CourseTheme as CourseTheme
 from .enums import Gender as Gender
 from .enums import SubmissionStatus as SubmissionStatus
 from .passport import Passport as Passport
+from .stamp_catalog import StampCatalog as StampCatalog
 from .stamp_submission import StampSubmission as StampSubmission
 from .user import SocialAccount as SocialAccount
 from .user import User as User
