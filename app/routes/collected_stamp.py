@@ -14,6 +14,4 @@ router = create_crud_router(
     patch_model=CollectedStampPatch,
     response_model=CollectedStampResponse,
     service_dependency=get_collected_stamp_service,
-    read_access="user",
-    write_access="admin",
 )

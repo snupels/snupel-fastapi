@@ -1,11 +1,10 @@
 from datetime import datetime
-from typing import Any
-from typing import Self
+from typing import Any, Self
 
 from pydantic import AnyHttpUrl, Field, model_validator
 
 from app.models import ActivityCategory
-from app.schemas.common import Dto, TimestampedResponse
+from app.schemas.common import Dto, OrmDto, TimestampedResponse
 
 
 class ActivityCreate(Dto):
@@ -13,6 +12,7 @@ class ActivityCreate(Dto):
     representative_image_url: AnyHttpUrl | None = None
     sport_name: str | None = Field(default=None, max_length=100)
     region: str | None = Field(default=None, max_length=100)
+    sigun: str | None = Field(default=None, max_length=100)
     place_name: str | None = Field(default=None, max_length=255)
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
@@ -27,12 +27,21 @@ class ActivityCreate(Dto):
     last_synced_at: datetime | None = None
     is_active: bool = True
 
+    @model_validator(mode="after")
+    def sport_category(self) -> Self:
+        if self.category == ActivityCategory.sports and not self.sport_name:
+            raise ValueError("sport_name is required for sports activities")
+        if self.category != ActivityCategory.sports and self.sport_name is not None:
+            raise ValueError("sport_name is only allowed for sports activities")
+        return self
+
 
 class ActivityPatch(Dto):
     category: ActivityCategory | None = None
     representative_image_url: AnyHttpUrl | None = None
     sport_name: str | None = Field(default=None, max_length=100)
     region: str | None = Field(default=None, max_length=100)
+    sigun: str | None = Field(default=None, max_length=100)
     place_name: str | None = Field(default=None, max_length=255)
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
@@ -59,6 +68,7 @@ class ActivityResponse(TimestampedResponse):
     representative_image_url: str | None = Field(serialization_alias="representativeImageUrl")
     sport_name: str | None = Field(serialization_alias="sportName")
     region: str | None
+    sigun: str | None = None
     place_name: str | None = Field(serialization_alias="placeName")
     latitude: float | None
     longitude: float | None
@@ -78,4 +88,14 @@ class ActivityResponse(TimestampedResponse):
 
 class ActivityExploreResponse(ActivityResponse):
     themes: list[str]
+    has_mission: bool = Field(serialization_alias="hasMission")
+
+
+class ActivityMapResponse(OrmDto):
+    id: int = Field(gt=0)
+    category: ActivityCategory
+    place_name: str | None = Field(serialization_alias="placeName")
+    sport_name: str | None = Field(serialization_alias="sportName")
+    latitude: float
+    longitude: float
     has_mission: bool = Field(serialization_alias="hasMission")

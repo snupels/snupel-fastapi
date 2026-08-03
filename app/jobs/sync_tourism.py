@@ -42,7 +42,14 @@ def pick(row: dict, *names):
     return next((row[name] for name in names if row.get(name) not in (None, "")), None)
 
 
-def tourism_item(row: dict, category: str = "tourism") -> dict:
+def sigun(value) -> str | None:
+    return next(
+        (part for part in str(value or "").split() if part.endswith(("시", "군"))),
+        None,
+    )
+
+
+def tourism_item(row: dict, category: str = "tour") -> dict:
     return {
         "external_id": str(row["contentid"]),
         "category": category,
@@ -50,6 +57,7 @@ def tourism_item(row: dict, category: str = "tourism") -> dict:
         "representative_image_url": row.get("firstimage") or row.get("firstimage2"),
         "sport_name": None,
         "region": "강원특별자치도",
+        "sigun": sigun(row.get("addr1")),
         "latitude": number(row.get("mapy")),
         "longitude": number(row.get("mapx")),
         "summary": None,
@@ -74,6 +82,7 @@ def durunubi_item(row: dict) -> dict:
         "representative_image_url": pick(row, "crsImg", "imageUrl", "imgUrl"),
         "sport_name": "trekking",
         "region": "강원특별자치도",
+        "sigun": sigun(pick(row, "sigun", "address", "addr")),
         "latitude": number(pick(row, "crsLat", "mapy", "lat")),
         "longitude": number(pick(row, "crsLon", "mapx", "lon", "lng")),
         "summary": pick(row, "crsContents", "crsSummary", "routeInfo"),
@@ -98,6 +107,7 @@ def mountain_item(row: dict) -> dict:
         "representative_image_url": None,
         "sport_name": "hiking",
         "region": "강원특별자치도",
+        "sigun": sigun(pick(row, "addrNm", "ctpvNm", "addr", "address")),
         "latitude": number(pick(row, "lat", "latitude", "mntnLat", "mtnLat")),
         "longitude": number(pick(row, "lot", "lon", "longitude", "mntnLot", "mtnLon")),
         "summary": None,
@@ -173,7 +183,7 @@ class TourismSync:
         result["tourapi"] = await self.repository.sync_source(
             "tourapi",
             [tourism_item(row) for row in places]
-            + [tourism_item(row, "festival") for row in festivals],
+            + [tourism_item(row, "event") for row in festivals],
             synced_at,
         )
         result["durunubi"] = await self.repository.sync_source(

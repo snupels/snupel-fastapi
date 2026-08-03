@@ -9,10 +9,9 @@ class Gender(str, Enum):
 
 
 class ActivityCategory(str, Enum):
+    tour = "tour"
     sports = "sports"
     event = "event"
-    festival = "festival"
-    tourism = "tourism"
 
 
 class CourseTheme(str, Enum):
