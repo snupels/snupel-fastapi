@@ -21,6 +21,7 @@ class ActivityService(CrudService):
                         "representative_image_url",
                         "sport_name",
                         "region",
+                        "sigun",
                         "place_name",
                         "latitude",
                         "longitude",

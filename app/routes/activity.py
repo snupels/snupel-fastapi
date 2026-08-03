@@ -15,6 +15,7 @@ router = APIRouter()
 async def explore_sports(
     pagination: Annotated[Pagination, Depends()],
     region: str | None = Query(default=None, max_length=100),
+    sigun: str | None = Query(default=None, max_length=100),
     sport: str | None = Query(default=None, max_length=100),
     theme: str | None = Query(default=None, max_length=30),
     mission: bool | None = None,
@@ -22,6 +23,7 @@ async def explore_sports(
 ):
     return await service.explore(
         region=region,
+        sigun=sigun,
         sport=sport,
         theme=theme,
         mission=mission,
@@ -34,11 +36,13 @@ async def explore_sports(
 async def explore_events(
     pagination: Annotated[Pagination, Depends()],
     region: str | None = Query(default=None, max_length=100),
+    sigun: str | None = Query(default=None, max_length=100),
     mission: bool | None = None,
     service=Depends(get_activity_service),
 ):
     return await service.explore(
         region=region,
+        sigun=sigun,
         sport=None,
         theme=None,
         mission=mission,

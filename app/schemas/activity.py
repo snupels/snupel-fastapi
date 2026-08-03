@@ -13,6 +13,7 @@ class ActivityCreate(Dto):
     representative_image_url: AnyHttpUrl | None = None
     sport_name: str | None = Field(default=None, max_length=100)
     region: str | None = Field(default=None, max_length=100)
+    sigun: str | None = Field(default=None, max_length=100)
     place_name: str | None = Field(default=None, max_length=255)
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
@@ -33,6 +34,7 @@ class ActivityPatch(Dto):
     representative_image_url: AnyHttpUrl | None = None
     sport_name: str | None = Field(default=None, max_length=100)
     region: str | None = Field(default=None, max_length=100)
+    sigun: str | None = Field(default=None, max_length=100)
     place_name: str | None = Field(default=None, max_length=255)
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
@@ -59,6 +61,7 @@ class ActivityResponse(TimestampedResponse):
     representative_image_url: str | None = Field(serialization_alias="representativeImageUrl")
     sport_name: str | None = Field(serialization_alias="sportName")
     region: str | None
+    sigun: str | None = None
     place_name: str | None = Field(serialization_alias="placeName")
     latitude: float | None
     longitude: float | None
