@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from sqlalchemy import and_, exists, or_, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Activity, Course, CourseStamp, Stamp
@@ -64,7 +64,6 @@ class ActivityRepository(CrudRepository):
         activity_ids = (
             select(Activity.id)
             .where(Activity.category.in_(categories), self._available())
-            .order_by(Activity.id)
         )
         published_course = (
             select(CourseStamp.id)
@@ -91,6 +90,14 @@ class ActivityRepository(CrudRepository):
             activity_ids = activity_ids.where(published_course.exists())
         elif mission is False:
             activity_ids = activity_ids.where(~published_course.exists())
+        if categories == ("sports",):
+            activity_ids = activity_ids.order_by(
+                published_course.exists().desc(),
+                func.coalesce(Activity.last_synced_at, Activity.created_at).desc(),
+                Activity.id,
+            )
+        else:
+            activity_ids = activity_ids.order_by(Activity.id)
         activity_ids = activity_ids.offset(offset).limit(limit).subquery()
         query = (
             select(Activity, Course.theme)
