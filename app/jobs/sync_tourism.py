@@ -49,7 +49,7 @@ def sigun(value) -> str | None:
     )
 
 
-def tourism_item(row: dict, category: str = "tourism") -> dict:
+def tourism_item(row: dict, category: str = "tour") -> dict:
     return {
         "external_id": str(row["contentid"]),
         "category": category,
@@ -183,7 +183,7 @@ class TourismSync:
         result["tourapi"] = await self.repository.sync_source(
             "tourapi",
             [tourism_item(row) for row in places]
-            + [tourism_item(row, "festival") for row in festivals],
+            + [tourism_item(row, "event") for row in festivals],
             synced_at,
         )
         result["durunubi"] = await self.repository.sync_source(

@@ -80,7 +80,7 @@ async def explore_events(
         sport=None,
         theme=None,
         mission=mission,
-        categories=("event", "festival"),
+        categories=("event",),
         offset=pagination.offset,
         limit=pagination.size,
     )

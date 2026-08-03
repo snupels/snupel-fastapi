@@ -18,7 +18,9 @@ from app.jobs.sync_tourism import (
 from app.models import ActivityCategory, CollectedStamp, CourseTheme, SubmissionStatus
 from app.repositories.stamp_submission import StampSubmissionRepository
 from app.schemas.recommendation import CourseRecommendationRequest
+from app.schemas.activity import ActivityCreate, ActivityPatch
 from app.schemas.stamp_submission import StampSubmissionCreate
+from app.services.activity import ActivityService
 from app.services.recommendation import RecommendationService
 from app.services.stamp_submission import StampSubmissionService
 from app.services.weather import WeatherService, base_datetime, grid, weather_cache
@@ -50,6 +52,25 @@ def test_tourism_pagination_and_normalization():
     assert mountain_item(mountain)["sigun"] == "속초시"
     assert durunubi_item(trail)["external_id"] == "7"
     assert mountain_item(mountain)["place_name"] == "설악산"
+
+
+def test_activity_categories_require_sport_type_only_for_sports():
+    assert ActivityCreate(category="tour").category == ActivityCategory.tour
+    assert ActivityCreate(category="event").category == ActivityCategory.event
+    assert ActivityCreate(category="sports", sport_name="hiking").sport_name == "hiking"
+    with pytest.raises(ValueError):
+        ActivityCreate(category="sports")
+    with pytest.raises(ValueError):
+        ActivityCreate(category="tour", sport_name="hiking")
+
+
+def test_activity_category_update_cannot_keep_sport_type_on_non_sports():
+    class Repository:
+        async def get(self, _):
+            return SimpleNamespace(category=ActivityCategory.sports, sport_name="hiking")
+
+    with pytest.raises(ApiError):
+        asyncio.run(ActivityService(Repository(), "Activity").update(1, ActivityPatch(category="event")))
 
 
 def test_tourism_sync_requests_durunubi_json():

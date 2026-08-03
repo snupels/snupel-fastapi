@@ -51,8 +51,8 @@ CASES = [
         "/api/activities",
         get_activity_service,
         True,
-        {"category": "sports"},
-        {"id": 1, "category": "sports", "representative_image_url": None, "sport_name": None, "region": None, "place_name": None, "latitude": None, "longitude": None, "created_at": NOW, "updated_at": NOW},
+        {"category": "sports", "sport_name": "hiking"},
+        {"id": 1, "category": "sports", "representative_image_url": None, "sport_name": "hiking", "region": None, "place_name": None, "latitude": None, "longitude": None, "created_at": NOW, "updated_at": NOW},
     ),
     (
         "/api/courses",
