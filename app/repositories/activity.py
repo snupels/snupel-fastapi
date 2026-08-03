@@ -107,6 +107,50 @@ class ActivityRepository(CrudRepository):
             query = query.where(Course.theme == theme)
         return (await self.session.execute(query)).all()
 
+    async def map_items(
+        self,
+        *,
+        south: float,
+        west: float,
+        north: float,
+        east: float,
+        category: ActivityCategory | None,
+        sport: str | None,
+        mission: bool | None,
+        limit: int,
+    ):
+        activity_ids = select(Activity.id).where(
+            self._available(),
+            Activity.latitude.is_not(None),
+            Activity.longitude.is_not(None),
+            Activity.latitude.between(south, north),
+            Activity.longitude.between(west, east),
+        )
+        published_course = (
+            select(CourseStamp.id)
+            .select_from(Stamp)
+            .join(CourseStamp, CourseStamp.stamp_id == Stamp.id)
+            .join(Course, Course.id == CourseStamp.course_id)
+            .where(Stamp.activity_id == Activity.id, Course.is_published.is_(True))
+            .correlate(Activity)
+        )
+        if category:
+            activity_ids = activity_ids.where(Activity.category == category)
+        if sport:
+            activity_ids = activity_ids.where(Activity.sport_name == sport)
+        if mission is True:
+            activity_ids = activity_ids.where(published_course.exists())
+        elif mission is False:
+            activity_ids = activity_ids.where(~published_course.exists())
+        activity_ids = activity_ids.order_by(Activity.id).limit(limit).subquery()
+        query = (
+            select(Activity.id, Activity.category, Activity.place_name, Activity.sport_name,
+                   Activity.latitude, Activity.longitude, published_course.exists().label("has_mission"))
+            .join(activity_ids, activity_ids.c.id == Activity.id)
+            .order_by(Activity.id)
+        )
+        return (await self.session.execute(query)).mappings().all()
+
     async def recommendation_candidates(
         self, region: str, sport: str | None, theme: str, limit: int = 30
     ):
