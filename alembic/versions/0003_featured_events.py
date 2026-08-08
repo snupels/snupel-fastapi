@@ -5,8 +5,8 @@ from datetime import datetime
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0003_featured_events"
-down_revision = "0002_tourism_missions"
+revision = "0004_featured_events"
+down_revision = "0003_stamp_catalog"
 branch_labels = None
 depends_on = None
 
