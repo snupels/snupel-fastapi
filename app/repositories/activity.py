@@ -196,16 +196,6 @@ class ActivityRepository(CrudRepository):
             }
             values["category"] = ActivityCategory(values["category"])
             if row:
-                if (
-                    values.get("representative_image_url") is None
-                    and row.representative_image_url
-                ):
-                    values.pop("representative_image_url")
-                    previous_photo = (row.source_metadata or {}).get("tourism_photo")
-                    if previous_photo:
-                        metadata = dict(values.get("source_metadata") or {})
-                        metadata["tourism_photo"] = previous_photo
-                        values["source_metadata"] = metadata
                 for key, value in values.items():
                     setattr(row, key, value)
             else:
