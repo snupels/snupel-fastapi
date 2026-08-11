@@ -61,7 +61,7 @@ CASES = [
         get_course_service,
         True,
         {"theme": "healing"},
-        {"id": 1, "recommended_companion": None, "representative_image_url": None, "estimated_duration_minutes": None, "theme": "healing", "created_at": NOW, "updated_at": NOW},
+        {"id": 1, "category": "tour", "sport_name": None, "recommended_companion": None, "representative_image_url": None, "estimated_duration_minutes": None, "theme": "healing", "created_at": NOW, "updated_at": NOW},
     ),
     (
         "/api/passports",
