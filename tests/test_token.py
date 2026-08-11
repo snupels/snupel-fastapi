@@ -1,3 +1,8 @@
+import base64
+
+import pytest
+
+from app.config import production_secret
 from app.deps.auth import LoginUser, access_token_expires_in, sign_access_token, verify_access_token
 
 
@@ -10,6 +15,9 @@ def test_signs_verifies_and_rejects_tokens(monkeypatch):
     assert verify_access_token(token, now=1_700_000_001) == LoginUser(7, "user@example.com")
     assert verify_access_token("not-a-token", now=1_700_000_001) is None
     assert verify_access_token(f"{token[:-1]}x", now=1_700_000_001) is None
+    invalid_utf8 = base64.urlsafe_b64encode(b"\xff").rstrip(b"=").decode()
+    assert verify_access_token(f"{invalid_utf8}.e30.signature") is None
+    assert verify_access_token("a.a.a") is None
 
 
 def test_configured_expiry(monkeypatch):
@@ -19,3 +27,10 @@ def test_configured_expiry(monkeypatch):
 
     assert access_token_expires_in() == expires_in == 2
     assert verify_access_token(token, now=1_700_000_003) is None
+
+
+def test_production_secrets_must_be_long(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    with pytest.raises(RuntimeError, match="at least 32 bytes"):
+        production_secret("JWT_SECRET", "short")
+    assert production_secret("JWT_SECRET", "x" * 32) == "x" * 32

@@ -13,9 +13,10 @@ from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import RedirectResponse
 
-from .config import admins
+from .config import admins, production_secret
 from .config.database import SessionLocal, engine
 from .deps.auth import LoginUser, sign_access_token, verify_access_token
+from .deps.rate_limit import RateLimiter
 from .models import (
     Activity,
     Badge,
@@ -48,6 +49,7 @@ class PendingCode:
 
 # ponytail: process-local OTP storage; move to Redis when running multiple API instances.
 pending_codes: dict[str, PendingCode] = {}
+admin_rate_limiter = RateLimiter(20)
 
 
 class AdminAuth(AuthenticationBackend):
@@ -63,6 +65,9 @@ class AdminAuth(AuthenticationBackend):
         return hmac.new(self.otp_key, code.encode(), hashlib.sha256).hexdigest()
 
     async def login(self, request: Request) -> bool | RedirectResponse:
+        client = getattr(request, "client", None)
+        if not admin_rate_limiter.allow(client.host if client else "local"):
+            return False
         form = await request.form()
         pending_email = request.session.get("pending_admin_email")
         if pending_email:
@@ -196,9 +201,9 @@ class CourseStampAdmin(DefaultAdmin, model=CourseStamp):
 
 
 def setup_admin(app) -> Admin:
+    production_secret("JWT_SECRET", os.getenv("JWT_SECRET"))
     secret = os.getenv("ADMIN_SESSION_SECRET") or os.getenv("JWT_SECRET")
-    if not secret and os.getenv("ENVIRONMENT") == "production":
-        raise RuntimeError("ADMIN_SESSION_SECRET or JWT_SECRET is required in production.")
+    production_secret("ADMIN_SESSION_SECRET or JWT_SECRET", secret)
 
     admin = Admin(
         app,

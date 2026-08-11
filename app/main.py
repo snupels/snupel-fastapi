@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,6 +34,19 @@ app.add_middleware(
 )
 app.add_exception_handler(ApiError, api_error_handler)
 setup_admin(app)
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    if request.url.path.startswith(("/api/auth", "/api/stamp-submissions", "/api/admin", "/admin")):
+        response.headers["Cache-Control"] = "no-store"
+    if os.getenv("ENVIRONMENT") == "production":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
+    return response
 
 
 @app.exception_handler(RequestValidationError)

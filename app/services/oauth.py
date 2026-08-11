@@ -84,9 +84,14 @@ def fetch_profile(provider: AuthProvider, code: str, redirect_uri: str) -> tuple
     profile = profile_response.json()
     if provider is AuthProvider.google:
         provider_id, email = profile.get("sub"), profile.get("email")
+        if profile.get("email_verified") is not True:
+            email = None
     else:
         provider_id = profile.get("id")
-        email = profile.get("kakao_account", {}).get("email")
+        account = profile.get("kakao_account", {})
+        email = account.get("email")
+        if not account.get("is_email_valid") or not account.get("is_email_verified"):
+            email = None
     if not isinstance(provider_id, (str, int)) or str(provider_id) == "":
         raise RuntimeError(f"Missing required {provider.value} profile id.")
     return str(provider_id), email if isinstance(email, str) and "@" in email else None
