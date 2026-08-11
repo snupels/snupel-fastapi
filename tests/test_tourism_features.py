@@ -95,6 +95,20 @@ def test_tourapi_leports_sport_classification(row, expected):
     assert tourism_sport(row) == expected
 
 
+@pytest.mark.parametrize(
+    "row",
+    [
+        {"contenttypeid": "28", "cat3": "A03021700", "title": "숲속 휴양지"},
+        {"contenttypeid": "28", "cat2": "A0302", "title": "별빛 글램핑"},
+        {"contenttypeid": "28", "cat2": "A0305", "title": "호수 카라반"},
+    ],
+)
+def test_tourapi_camping_and_campgrounds_are_not_sports(row):
+    item = tourism_item({"contentid": "camp", **row})
+    assert item["category"] == "tour"
+    assert item["sport_name"] is None
+
+
 def test_activity_categories_require_sport_type_only_for_sports():
     assert ActivityCreate(category="tour").category == ActivityCategory.tour
     assert ActivityCreate(category="event").category == ActivityCategory.event

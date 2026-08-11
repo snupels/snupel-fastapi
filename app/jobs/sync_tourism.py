@@ -24,6 +24,8 @@ MARINE_DATA_URL = "https://www.data.go.kr/data/3045471/fileData.do"
 MARINE_FACILITY_DATA_URL = "https://www.data.go.kr/data/15111483/fileData.do"
 OXYGEN_ROAD_DATA_URL = "https://www.data.go.kr/data/3045500/fileData.do"
 LEPORTS_CONTENT_TYPE = "28"
+EXCLUDED_LEPORTS_CODES = {"A03021700"}
+EXCLUDED_LEPORTS_KEYWORDS = ("캠핑", "야영", "글램핑", "카라반")
 LEPORTS_CODE_SPORT = {
     "A03010200": "marine",
     "A03020500": "cycling",
@@ -158,6 +160,11 @@ def tourism_sport(row: dict) -> str | None:
     if str(row.get("contenttypeid") or "") != LEPORTS_CONTENT_TYPE:
         return None
     code = str(row.get("cat3") or "").upper()
+    title = str(row.get("title") or "")
+    if code in EXCLUDED_LEPORTS_CODES or any(
+        keyword in title for keyword in EXCLUDED_LEPORTS_KEYWORDS
+    ):
+        return None
     if code in LEPORTS_CODE_SPORT:
         return LEPORTS_CODE_SPORT[code]
     text = " ".join(str(row.get(key) or "") for key in ("title", "cat1", "cat2", "cat3"))
