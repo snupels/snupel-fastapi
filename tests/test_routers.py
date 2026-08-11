@@ -16,6 +16,7 @@ from app.services.collected_badge import get_collected_badge_service
 from app.services.collected_stamp import get_collected_stamp_service
 from app.services.course import get_course_service
 from app.services.passport import get_passport_service
+from app.services.recommendation import get_recommendation_service
 from app.services.stamp_catalog import get_stamp_catalog_service
 from app.services.stamp_submission import get_stamp_submission_service
 
@@ -130,6 +131,23 @@ def test_health_and_openapi():
     with TestClient(app) as client:
         assert client.get("/api/health").json() == {"status": "ok"}
         assert client.get("/api/docs").status_code == 200
+
+
+def test_course_recommendations_are_available_to_logged_in_users():
+    class RecommendationService:
+        async def recommend(self, _body):
+            return {"stops": [], "used_ai": False}
+
+    app.dependency_overrides[get_recommendation_service] = RecommendationService
+    headers = {"Authorization": f"Bearer {token('user@example.com')}"}
+    body = {"theme": "healing", "region": "강원특별자치도", "availableMinutes": 120}
+
+    with TestClient(app) as client:
+        assert client.post("/api/course-recommendations", json=body).status_code == 401
+        response = client.post("/api/course-recommendations", json=body, headers=headers)
+
+    assert response.status_code == 200
+    assert response.json() == {"stops": [], "usedAi": False}
 
 
 def test_stamp_catalog_is_public_and_serves_images():
