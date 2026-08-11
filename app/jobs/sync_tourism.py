@@ -25,7 +25,19 @@ MARINE_FACILITY_DATA_URL = "https://www.data.go.kr/data/15111483/fileData.do"
 OXYGEN_ROAD_DATA_URL = "https://www.data.go.kr/data/3045500/fileData.do"
 LEPORTS_CONTENT_TYPE = "28"
 EXCLUDED_LEPORTS_CODES = {"A03021700"}
-EXCLUDED_LEPORTS_KEYWORDS = ("캠핑", "야영", "글램핑", "카라반")
+EXCLUDED_LEPORTS_KEYWORDS = (
+    "캠핑",
+    "야영",
+    "글램핑",
+    "카라반",
+    "수련원",
+    "수련관",
+    "교육원",
+    "연수원",
+    "청소년활동센터",
+    "청소년문화의집",
+    "체험학습장",
+)
 LEPORTS_CODE_SPORT = {
     "A03010200": "marine",
     "A03020500": "cycling",

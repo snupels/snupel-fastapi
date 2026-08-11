@@ -109,6 +109,30 @@ def test_tourapi_camping_and_campgrounds_are_not_sports(row):
     assert item["sport_name"] is None
 
 
+@pytest.mark.parametrize(
+    "title",
+    [
+        "철원군 병영체험수련원",
+        "태백시청소년수련관",
+        "강원 숲체험교육원",
+        "청소년활동센터",
+        "자연 체험학습장",
+    ],
+)
+def test_tourapi_training_and_education_facilities_are_not_sports(title):
+    item = tourism_item(
+        {
+            "contentid": title,
+            "contenttypeid": "28",
+            "cat2": "A0302",
+            "cat3": "A03020200",
+            "title": title,
+        }
+    )
+    assert item["category"] == "tour"
+    assert item["sport_name"] is None
+
+
 def test_activity_categories_require_sport_type_only_for_sports():
     assert ActivityCreate(category="tour").category == ActivityCategory.tour
     assert ActivityCreate(category="event").category == ActivityCategory.event
