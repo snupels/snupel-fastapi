@@ -16,6 +16,7 @@ from app.jobs.sync_tourism import (
     marine_facility_item,
     marine_item,
     mountain_item,
+    olympic_sport_categories,
     oxygen_road_item,
     ski_golf_item,
     tourism_item,
@@ -79,6 +80,81 @@ def test_tourapi_leports_are_normalized_as_sports_with_their_own_image():
     )
     assert surf["source_metadata"]["contenttypeid"] == "28"
     assert tourism_sport({"contenttypeid": "12", "title": "일반 관광지"}) is None
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "2018 평창동계올림픽대회 및 동계패럴림픽대회 기념관",
+        "강릉올림픽뮤지엄",
+    ],
+)
+def test_olympic_museums_are_normalized_as_legacy_sports(title):
+    item = tourism_item(
+        {
+            "contentid": title,
+            "contenttypeid": "14",
+            "title": title,
+            "addr1": "강원특별자치도 평창군 대관령면",
+        }
+    )
+    assert item["category"] == "sports"
+    assert item["sport_name"] == "olympic_legacy"
+    assert item["source_metadata"]["sport_categories"] == ["olympic_legacy"]
+
+
+@pytest.mark.parametrize(
+    ("row", "sport_name"),
+    [
+        (
+            {
+                "contenttypeid": "28",
+                "cat3": "A03021200",
+                "title": "알펜시아리조트 스키장",
+            },
+            "ski",
+        ),
+        (
+            {
+                "contenttypeid": "28",
+                "cat3": "A03022700",
+                "title": "알펜시아 알파인코스터",
+            },
+            "trekking",
+        ),
+        (
+            {"contenttypeid": "12", "title": "알펜시아리조트대관령스키역사관"},
+            "olympic_legacy",
+        ),
+        (
+            {"contenttypeid": "28", "title": "관동하키센터"},
+            "ice_hockey",
+        ),
+    ],
+)
+def test_olympic_venues_can_have_snow_and_legacy_categories(row, sport_name):
+    item = tourism_item({"contentid": row["title"], **row})
+    assert item["category"] == "sports"
+    assert item["sport_name"] == sport_name
+    assert item["source_metadata"]["sport_categories"] == [
+        "snow",
+        "olympic_legacy",
+    ]
+    assert olympic_sport_categories(row) == ["snow", "olympic_legacy"]
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "인터컨티넨탈 알펜시아 평창 리조트",
+        "홀리데이인&스위트 알펜시아 평창",
+    ],
+)
+def test_alpensia_accommodations_are_not_normalized_as_sports(title):
+    item = tourism_item({"contentid": title, "contenttypeid": "32", "title": title})
+    assert item["category"] == "tour"
+    assert item["sport_name"] is None
+    assert "sport_categories" not in item["source_metadata"]
 
 
 @pytest.mark.parametrize(

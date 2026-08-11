@@ -194,6 +194,24 @@ def tourism_sport(row: dict) -> str | None:
     return "athletics"
 
 
+def olympic_sport_categories(row: dict) -> list[str]:
+    title = re.sub(r"\s+", "", str(row.get("title") or ""))
+    content_type = str(row.get("contenttypeid") or "")
+    is_alpensia_sports = "알펜시아" in title and (
+        content_type == LEPORTS_CONTENT_TYPE or "스키역사관" in title
+    )
+    is_ice_legacy = is_alpensia_sports or "관동하키센터" in title
+    is_legacy_museum = (
+        "올림픽" in title and any(word in title for word in ("기념관", "뮤지엄"))
+    ) or "스키역사관" in title
+
+    if is_ice_legacy:
+        return ["snow", "olympic_legacy"]
+    if is_legacy_museum:
+        return ["olympic_legacy"]
+    return []
+
+
 def tourism_image(row: dict) -> str | None:
     value = row.get("firstimage") or row.get("firstimage2")
     if not value:
@@ -205,6 +223,20 @@ def tourism_image(row: dict) -> str | None:
 
 def tourism_item(row: dict, category: str = "tour") -> dict:
     sport_name = tourism_sport(row) if category == "tour" else None
+    sport_categories = olympic_sport_categories(row) if category == "tour" else []
+    if sport_categories and "관동하키센터" in re.sub(
+        r"\s+", "", str(row.get("title") or "")
+    ):
+        sport_name = "ice_hockey"
+    elif sport_categories and not sport_name:
+        sport_name = "olympic_legacy"
+    source_metadata = {
+        key: value
+        for key, value in row.items()
+        if key in {"contenttypeid", "cat1", "cat2", "cat3", "tel", "zipcode"}
+    }
+    if sport_categories:
+        source_metadata["sport_categories"] = sport_categories
     return {
         "external_id": str(row["contentid"]),
         "category": "sports" if sport_name else category,
@@ -220,11 +252,7 @@ def tourism_item(row: dict, category: str = "tour") -> dict:
         "source_url": None,
         "starts_at": date(row.get("eventstartdate")),
         "ends_at": date(row.get("eventenddate")),
-        "source_metadata": {
-            key: value
-            for key, value in row.items()
-            if key in {"contenttypeid", "cat1", "cat2", "cat3", "tel", "zipcode"}
-        },
+        "source_metadata": source_metadata,
     }
 
 
