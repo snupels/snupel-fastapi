@@ -24,10 +24,12 @@ from app.jobs.sync_tourism import (
 )
 from app.models import ActivityCategory, CollectedStamp, CourseTheme, SubmissionStatus
 from app.repositories.stamp_submission import StampSubmissionRepository
+from app.schemas.course import CourseCreate, CoursePatch
 from app.schemas.recommendation import CourseRecommendationRequest
 from app.schemas.activity import ActivityCreate, ActivityPatch
 from app.schemas.stamp_submission import StampSubmissionCreate
 from app.services.activity import ActivityService
+from app.services.course import CourseService
 from app.services.recommendation import RecommendationService
 from app.services.stamp_submission import StampSubmissionService
 from app.services.weather import WeatherService, base_datetime, grid, weather_cache
@@ -226,6 +228,25 @@ def test_activity_category_update_cannot_keep_sport_type_on_non_sports():
 
     with pytest.raises(ApiError):
         asyncio.run(ActivityService(Repository(), "Activity").update(1, ActivityPatch(category="event")))
+
+
+def test_course_categories_require_sport_type_only_for_sports():
+    assert CourseCreate(theme="healing").category == ActivityCategory.tour
+    assert CourseCreate(theme="healing", category="event").category == ActivityCategory.event
+    assert CourseCreate(theme="healing", category="sports", sport_name="hiking").sport_name == "hiking"
+    with pytest.raises(ValueError):
+        CourseCreate(theme="healing", category="sports")
+    with pytest.raises(ValueError):
+        CourseCreate(theme="healing", category="tour", sport_name="hiking")
+
+
+def test_course_category_update_cannot_keep_sport_type_on_non_sports():
+    class Repository:
+        async def get(self, _item_id):
+            return SimpleNamespace(category=ActivityCategory.sports, sport_name="hiking")
+
+    with pytest.raises(ApiError):
+        asyncio.run(CourseService(Repository(), "Course").update(1, CoursePatch(category="event")))
 
 
 def test_tourism_sync_requests_durunubi_json():

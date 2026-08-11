@@ -5,13 +5,17 @@ from sqlalchemy.dialects.mysql import BIGINT, INTEGER
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin
-from .enums import CourseTheme
+from .enums import ActivityCategory, CourseTheme
 
 
 class Course(TimestampMixin, Base):
     __tablename__ = "courses"
 
     id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True, autoincrement=True)
+    category: Mapped[ActivityCategory] = mapped_column(
+        SqlEnum(ActivityCategory), default=ActivityCategory.tour, server_default="tour"
+    )
+    sport_name: Mapped[str | None] = mapped_column(String(100))
     recommended_companion: Mapped[str | None] = mapped_column(String(100))
     representative_image_url: Mapped[str | None] = mapped_column(Text)
     estimated_duration_minutes: Mapped[int | None] = mapped_column(INTEGER(unsigned=True))
