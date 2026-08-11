@@ -2,10 +2,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, status
 
-from app.deps.auth import LoginUser, optional_user, require_admin
+from app.deps.auth import LoginUser, require_admin, require_user
 from app.models import SubmissionStatus
 from app.schemas.common import Pagination
 from app.schemas.stamp_submission import (
+    AdminStampSubmissionResponse,
     RejectSubmission,
     StampSubmissionCreate,
     StampSubmissionResponse,
@@ -20,7 +21,7 @@ router = APIRouter(tags=["Stamp submissions"])
 @router.post("/api/stamp-submissions/upload-url", response_model=UploadUrlResponse)
 async def upload_url(
     body: UploadUrlRequest,
-    actor: LoginUser = Depends(require_admin),
+    actor: LoginUser = Depends(require_user),
     service=Depends(get_stamp_submission_service),
 ):
     return await service.upload_url(body, actor)
@@ -33,28 +34,33 @@ async def upload_url(
 )
 async def submit(
     body: StampSubmissionCreate,
-    actor: LoginUser = Depends(require_admin),
+    actor: LoginUser = Depends(require_user),
     service=Depends(get_stamp_submission_service),
 ):
     return await service.create(body, actor)
 
 
 @router.get("/api/stamp-submissions", response_model=list[StampSubmissionResponse])
-async def list_submissions(
+async def list_own(
     pagination: Annotated[Pagination, Depends()],
-    _: LoginUser | None = Depends(optional_user),
+    actor: LoginUser = Depends(require_user),
     service=Depends(get_stamp_submission_service),
 ):
-    return await service.list(offset=pagination.offset, limit=pagination.size)
+    return await service.list_user(
+        actor, offset=pagination.offset, limit=pagination.size
+    )
 
 
-@router.get("/api/admin/stamp-submissions", response_model=list[StampSubmissionResponse])
+@router.get(
+    "/api/admin/stamp-submissions",
+    response_model=list[AdminStampSubmissionResponse],
+)
 async def list_pending(
     pagination: Annotated[Pagination, Depends()],
     submission_status: SubmissionStatus = Query(
         default=SubmissionStatus.pending, alias="status"
     ),
-    _: LoginUser | None = Depends(optional_user),
+    _: LoginUser = Depends(require_admin),
     service=Depends(get_stamp_submission_service),
 ):
     return await service.list_admin(

@@ -4,10 +4,12 @@ from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
+    Activity,
     CollectedStamp,
     Course,
     CourseStamp,
     Passport,
+    Stamp,
     StampSubmission,
     SubmissionStatus,
 )
@@ -17,12 +19,20 @@ class StampSubmissionRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def valid_target(self, passport_id: int, stamp_id: int) -> bool:
+    async def valid_target(
+        self, passport_id: int, stamp_id: int, user_id: int, *, lock: bool = False
+    ) -> bool:
+        passport = select(Passport.id).where(
+            Passport.id == passport_id, Passport.user_id == user_id
+        )
+        if lock:
+            passport = passport.with_for_update()
+        if await self.session.scalar(passport) is None:
+            return False
         return bool(
             await self.session.scalar(
                 select(
                     exists().where(
-                        Passport.id == passport_id,
                         CourseStamp.stamp_id == stamp_id,
                         Course.id == CourseStamp.course_id,
                         Course.is_published.is_(True),
@@ -80,27 +90,20 @@ class StampSubmissionRepository:
             )
         )
 
-    async def list(self, *, offset: int = 0, limit: int = 20):
-        return list(
-            await self.session.scalars(
-                select(StampSubmission)
-                .order_by(StampSubmission.id.desc())
-                .offset(offset)
-                .limit(limit)
-            )
-        )
-
     async def list_status(
         self, status: SubmissionStatus, *, offset: int = 0, limit: int = 20
     ):
+        query = (
+            select(StampSubmission, Activity)
+            .join(Stamp, Stamp.id == StampSubmission.stamp_id)
+            .join(Activity, Activity.id == Stamp.activity_id)
+            .where(StampSubmission.status == status)
+            .order_by(StampSubmission.id)
+            .offset(offset)
+            .limit(limit)
+        )
         return list(
-            await self.session.scalars(
-                select(StampSubmission)
-                .where(StampSubmission.status == status)
-                .order_by(StampSubmission.id)
-                .offset(offset)
-                .limit(limit)
-            )
+            (await self.session.execute(query)).all()
         )
 
     async def get(self, item_id: int):
