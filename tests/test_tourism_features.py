@@ -83,7 +83,8 @@ def test_tourapi_leports_are_normalized_as_sports_with_their_own_image():
 @pytest.mark.parametrize(
     ("row", "expected"),
     [
-        ({"contenttypeid": 28, "cat3": "A03021100", "title": "리조트"}, "ski"),
+        ({"contenttypeid": 28, "cat3": "A03021200", "title": "리조트"}, "ski"),
+        ({"contenttypeid": 28, "cat3": "A03022700", "title": "옛길"}, "trekking"),
         ({"contenttypeid": "28", "cat2": "A0303", "title": "수상 체험장"}, "marine"),
         ({"contenttypeid": "28", "title": "평창 MTB 파크"}, "mtb"),
         ({"contenttypeid": "28", "cat2": "A0304", "title": "비행 체험"}, "aerial"),

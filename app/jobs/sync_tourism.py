@@ -25,20 +25,25 @@ MARINE_FACILITY_DATA_URL = "https://www.data.go.kr/data/15111483/fileData.do"
 OXYGEN_ROAD_DATA_URL = "https://www.data.go.kr/data/3045500/fileData.do"
 LEPORTS_CONTENT_TYPE = "28"
 LEPORTS_CODE_SPORT = {
-    "A03020600": "golf",
-    "A03021100": "ski",
-    "A03021200": "snowboard",
+    "A03010200": "marine",
+    "A03020500": "cycling",
+    "A03020700": "golf",
+    "A03021200": "ski",
     "A03021300": "skating",
     "A03021400": "snow_sledding",
     "A03021800": "climbing",
     "A03022200": "mtb",
-    "A03022600": "trekking",
+    "A03022700": "trekking",
     "A03030100": "surfing",
     "A03030200": "kayak",
     "A03030300": "sailing",
     "A03030400": "scuba",
+    "A03030500": "fishing",
+    "A03030600": "fishing",
+    "A03030700": "water_sports",
     "A03030800": "rafting",
     "A03040300": "paragliding",
+    "A03050100": "multi_sports",
 }
 LEPORTS_KEYWORD_SPORT = (
     (("스노보드",), "snowboard"),
