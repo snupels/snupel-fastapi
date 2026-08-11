@@ -23,6 +23,16 @@ SKI_GOLF_DATA_URL = "https://www.data.go.kr/data/3045451/fileData.do"
 MARINE_DATA_URL = "https://www.data.go.kr/data/3045471/fileData.do"
 MARINE_FACILITY_DATA_URL = "https://www.data.go.kr/data/15111483/fileData.do"
 OXYGEN_ROAD_DATA_URL = "https://www.data.go.kr/data/3045500/fileData.do"
+PHOTO_GALLERY_URL = (
+    "https://apis.data.go.kr/B551011/PhotoGalleryService1/gallerySearchList1"
+)
+PHOTO_KEYWORDS = {
+    "ski": ("스키", "설경", "눈"),
+    "golf": ("골프", "골프장"),
+    "marine": ("해양", "바다", "해변", "서핑", "요트", "카약", "수상레저"),
+    "trekking": ("트레킹", "걷기", "둘레길", "산소길"),
+    "hiking": ("등산", "산", "정상"),
+}
 
 
 def items(payload: dict) -> tuple[list[dict], int]:
@@ -54,6 +64,66 @@ def pick(row: dict, *names):
 def stable_id(*values) -> str:
     raw = "|".join(str(value or "").strip() for value in values)
     return hashlib.sha256(raw.encode()).hexdigest()[:32]
+
+
+def match_text(value) -> str:
+    return re.sub(r"[^0-9a-z가-힣]", "", str(value or "").lower())
+
+
+def attach_tourism_photos(activities: list[dict], photos: list[dict]) -> int:
+    attached = 0
+    searchable_photos = [
+        (
+            photo,
+            match_text(
+                " ".join(
+                    str(photo.get(key) or "")
+                    for key in (
+                        "galTitle",
+                        "galPhotographyLocation",
+                        "galSearchKeyword",
+                    )
+                )
+            ),
+        )
+        for photo in photos
+        if photo.get("galWebImageUrl")
+    ]
+    for activity in activities:
+        if activity.get("representative_image_url"):
+            continue
+        place = match_text(activity.get("place_name"))
+        area = match_text(activity.get("sigun")).removesuffix("시").removesuffix("군")
+        keywords = PHOTO_KEYWORDS.get(str(activity.get("sport_name") or ""), ())
+        candidates = []
+        for photo, text in searchable_photos:
+            score = 0
+            if len(place) >= 3 and place in text:
+                score += 100
+            if len(area) >= 2 and area in text:
+                score += 20
+            if any(match_text(keyword) in text for keyword in keywords):
+                score += 10
+            if score >= 100 or score >= 30:
+                candidates.append((score, photo))
+        if not candidates:
+            continue
+        top_score = max(score for score, _ in candidates)
+        tied = [photo for score, photo in candidates if score == top_score]
+        selected = tied[int(stable_id(activity.get("place_name")), 16) % len(tied)]
+        activity["representative_image_url"] = selected["galWebImageUrl"]
+        metadata = dict(activity.get("source_metadata") or {})
+        metadata["tourism_photo"] = {
+            "content_id": selected.get("galContentId"),
+            "title": selected.get("galTitle"),
+            "location": selected.get("galPhotographyLocation"),
+            "photographer": selected.get("galPhotographer"),
+            "provider": "한국관광공사 포토코리아",
+            "license": "공공누리 제1유형",
+        }
+        activity["source_metadata"] = metadata
+        attached += 1
+    return attached
 
 
 def sigun(value) -> str | None:
@@ -294,6 +364,28 @@ class TourismSync:
             content = file_response.content.decode("cp949")
         return list(csv.DictReader(io.StringIO(content)))
 
+    async def _photo_gallery(self, limit: int = 1000) -> list[dict]:
+        page, result = 1, []
+        while len(result) < limit:
+            payload = await self._get(
+                PHOTO_GALLERY_URL,
+                {
+                    "numOfRows": min(100, limit - len(result)),
+                    "pageNo": page,
+                    "MobileOS": "ETC",
+                    "MobileApp": "Snupel",
+                    "arrange": "C",
+                    "keyword": "강원",
+                    "_type": "json",
+                },
+            )
+            batch, total = items(payload)
+            result.extend(batch)
+            if not batch or len(result) >= total:
+                break
+            page += 1
+        return result
+
     async def run(self) -> dict[str, int]:
         common = {"MobileOS": "ETC", "MobileApp": "Snupel", "_type": "json"}
         codes = await self._pages(f"{KOR_BASE}/areaCode2", common)
@@ -323,6 +415,23 @@ class TourismSync:
             if "해양레저" in str(row.get("업종") or "")
         ]
         oxygen_roads = await self._file_rows(OXYGEN_ROAD_DATA_URL)
+        normalized_ski_golf = [ski_golf_item(row) for row in ski_golf]
+        normalized_marine = [marine_item(row) for row in marine]
+        normalized_marine_facilities = [
+            marine_facility_item(row) for row in marine_facilities
+        ]
+        normalized_oxygen_roads = [oxygen_road_item(row) for row in oxygen_roads]
+        normalized_sports = (
+            normalized_ski_golf
+            + normalized_marine
+            + normalized_marine_facilities
+            + normalized_oxygen_roads
+        )
+        try:
+            photos = await self._photo_gallery()
+        except (httpx.HTTPError, KeyError, TypeError, ValueError):
+            photos = []
+        photo_count = attach_tourism_photos(normalized_sports, photos)
         synced_at = datetime.now()
         result = {}
         result["tourapi"] = await self.repository.sync_source(
@@ -338,21 +447,22 @@ class TourismSync:
             "mountain100", [mountain_item(row) for row in mountains], synced_at
         )
         result["gangwon_ski_golf"] = await self.repository.sync_source(
-            "gangwon_ski_golf", [ski_golf_item(row) for row in ski_golf], synced_at
+            "gangwon_ski_golf", normalized_ski_golf, synced_at
         )
         result["gangwon_marine"] = await self.repository.sync_source(
-            "gangwon_marine", [marine_item(row) for row in marine], synced_at
+            "gangwon_marine", normalized_marine, synced_at
         )
         result["gangwon_marine_facility"] = await self.repository.sync_source(
             "gangwon_marine_facility",
-            [marine_facility_item(row) for row in marine_facilities],
+            normalized_marine_facilities,
             synced_at,
         )
         result["gangwon_oxygen_road"] = await self.repository.sync_source(
             "gangwon_oxygen_road",
-            [oxygen_road_item(row) for row in oxygen_roads],
+            normalized_oxygen_roads,
             synced_at,
         )
+        result["tourism_photos"] = photo_count
         return result
 
 

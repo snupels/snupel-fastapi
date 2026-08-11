@@ -9,6 +9,7 @@ from app.deps.auth import LoginUser
 from app.exceptions import ApiError
 from app.jobs.sync_tourism import (
     TourismSync,
+    attach_tourism_photos,
     durunubi_item,
     in_gangwon,
     items,
@@ -88,6 +89,9 @@ def test_tourism_sync_requests_durunubi_json():
         async def _file_rows(self, _url):
             return []
 
+        async def _photo_gallery(self, limit=1000):
+            return []
+
     class Repository:
         async def sync_source(self, *_):
             return 0
@@ -131,6 +135,47 @@ def test_file_data_download_and_gangwon_sports_normalization():
     assert marine["sport_name"] == "marine" and marine["sigun"] == "양양군"
     assert str(facility["latitude"]) == "38.1" and facility["sport_name"] == "marine"
     assert road["sport_name"] == "trekking" and road["source_metadata"]["distance"] == "27km"
+
+
+def test_tourism_photo_matching_prefers_place_then_region_and_sport():
+    activities = [
+        {
+            "place_name": "낙산해변 서핑센터",
+            "sigun": "양양군",
+            "sport_name": "marine",
+            "representative_image_url": None,
+            "source_metadata": {},
+        },
+        {
+            "place_name": "설원리조트",
+            "sigun": "평창군",
+            "sport_name": "ski",
+            "representative_image_url": None,
+            "source_metadata": {},
+        },
+    ]
+    photos = [
+        {
+            "galContentId": "1",
+            "galTitle": "낙산해변 서핑센터",
+            "galPhotographyLocation": "강원특별자치도 양양군",
+            "galSearchKeyword": "서핑,해양레저",
+            "galWebImageUrl": "https://example.com/surf.jpg",
+            "galPhotographer": "홍길동",
+        },
+        {
+            "galContentId": "2",
+            "galTitle": "평창의 겨울",
+            "galPhotographyLocation": "강원특별자치도 평창군",
+            "galSearchKeyword": "스키,설경",
+            "galWebImageUrl": "https://example.com/ski.jpg",
+            "galPhotographer": "김사진",
+        },
+    ]
+    assert attach_tourism_photos(activities, photos) == 2
+    assert activities[0]["representative_image_url"].endswith("surf.jpg")
+    assert activities[0]["source_metadata"]["tourism_photo"]["photographer"] == "홍길동"
+    assert activities[1]["representative_image_url"].endswith("ski.jpg")
 
 
 def test_weather_grid_base_time_and_cache(monkeypatch):
