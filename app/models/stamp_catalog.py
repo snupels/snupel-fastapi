@@ -7,6 +7,16 @@ from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base, TimestampMixin
 
 
+def stamp_image_url(image_key: str) -> str:
+    bucket = os.getenv("S3_BUCKET", "")
+    region = os.getenv("S3_REGION", "ap-northeast-2")
+    base_url = os.getenv(
+        "STAMP_IMAGE_BASE_URL",
+        f"https://{bucket}.s3.{region}.amazonaws.com" if bucket else "",
+    ).rstrip("/")
+    return f"{base_url}/{image_key}" if base_url else image_key
+
+
 class StampCatalog(TimestampMixin, Base):
     __tablename__ = "stamp_catalog"
     __table_args__ = (Index("stamp_catalog_region_sport_unique", "region_en", "sport_en", unique=True),)
@@ -21,9 +31,4 @@ class StampCatalog(TimestampMixin, Base):
 
     @property
     def image_url(self) -> str:
-        bucket = os.getenv("S3_BUCKET", "")
-        region = os.getenv("S3_REGION", "ap-northeast-2")
-        base_url = os.getenv(
-            "STAMP_IMAGE_BASE_URL", f"https://{bucket}.s3.{region}.amazonaws.com" if bucket else ""
-        ).rstrip("/")
-        return f"{base_url}/{self.image_key}" if base_url else self.image_key
+        return stamp_image_url(self.image_key)

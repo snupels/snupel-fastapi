@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import SocialAccount, User
+from app.models import Passport, SocialAccount, User
 
 
 class AuthRepository:
@@ -31,6 +31,8 @@ class AuthRepository:
             gender=gender,
         )
         self.session.add(user)
+        await self.session.flush()
+        self.session.add(Passport(user_id=user.id))
         await self.session.flush()
         await self.session.refresh(user)
         return user

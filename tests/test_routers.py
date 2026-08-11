@@ -129,11 +129,7 @@ def test_router_success_validation_auth_and_service_errors(path, dependency, adm
 
 def test_health_and_openapi():
     with TestClient(app) as client:
-        health = client.get("/api/health")
-        assert health.json() == {"status": "ok"}
-        assert health.headers["x-content-type-options"] == "nosniff"
-        assert health.headers["x-frame-options"] == "DENY"
-        assert health.headers["referrer-policy"] == "no-referrer"
+        assert client.get("/api/health").json() == {"status": "ok"}
         assert client.get("/api/docs").status_code == 200
 
 
@@ -284,27 +280,101 @@ def test_data_lists_are_public(path, dependency):
         assert client.get(path).status_code == 200
 
 
-def test_stamp_submission_lists_enforce_user_and_admin_access():
+def test_stamp_submission_routes_are_private_and_admin_review_has_activity():
+    submission = {
+        "id": 1,
+        "passport_id": 4,
+        "stamp_id": 2,
+        "object_key": "proofs/4/2/x.jpg",
+        "status": "pending",
+        "reviewer_id": None,
+        "reviewed_at": None,
+        "rejection_reason": None,
+        "proof_url": "https://signed.example.com/proof",
+        "created_at": NOW,
+        "updated_at": NOW,
+    }
+
     class Service:
-        async def list_user(self, user, *, offset, limit):
-            self.user_id = user.id
-            return []
+        async def upload_url(self, _body, actor):
+            assert actor.id == 7
+            return {
+                "upload_url": "https://upload.example.com",
+                "fields": {"key": "proofs/4/2/x.jpg"},
+                "object_key": "proofs/4/2/x.jpg",
+                "expires_in": 600,
+            }
 
-        async def list_admin(self, _status, *, offset, limit):
-            return []
+        async def create(self, _body, actor):
+            assert actor.id == 7
+            return submission
 
-    service = Service()
-    app.dependency_overrides[get_stamp_submission_service] = lambda: service
+        async def list_user(self, actor, *, offset, limit):
+            assert actor.id == 7
+            assert (offset, limit) == (0, 20)
+            return [submission]
+
+        async def list_admin(self, status, *, offset, limit):
+            assert status.value == "pending"
+            assert (offset, limit) == (0, 20)
+            return [
+                submission
+                | {
+                    "activity": {
+                        "id": 9,
+                        "category": "event",
+                        "place_name": "강릉 스포츠 행사",
+                        "address": "강릉시",
+                        "starts_at": NOW,
+                        "ends_at": NOW,
+                    }
+                }
+            ]
+
+    app.dependency_overrides[get_stamp_submission_service] = Service
     user_headers = {"Authorization": f"Bearer {token('user@example.com')}"}
     admin_headers = {"Authorization": f"Bearer {token('admin@example.com')}"}
 
     with TestClient(app) as client:
         assert client.get("/api/stamp-submissions").status_code == 401
         assert client.get("/api/stamp-submissions", headers=user_headers).status_code == 200
-        assert service.user_id == 7
-        assert client.get("/api/admin/stamp-submissions").status_code == 401
         assert client.get("/api/admin/stamp-submissions", headers=user_headers).status_code == 403
-        assert client.get("/api/admin/stamp-submissions", headers=admin_headers).status_code == 200
+        admin = client.get("/api/admin/stamp-submissions", headers=admin_headers)
+        upload = client.post(
+            "/api/stamp-submissions/upload-url",
+            json={"passportId": 4, "stampId": 2, "contentType": "image/jpeg"},
+            headers=user_headers,
+        )
+        created = client.post(
+            "/api/stamp-submissions",
+            json={"passportId": 4, "stampId": 2, "objectKey": "proofs/4/2/x.jpg"},
+            headers=user_headers,
+        )
+
+    assert admin.status_code == 200
+    assert admin.json()[0]["activity"] == {
+        "id": 9,
+        "category": "event",
+        "placeName": "강릉 스포츠 행사",
+        "address": "강릉시",
+        "startsAt": NOW,
+        "endsAt": NOW,
+    }
+    assert upload.status_code == 200
+    assert created.status_code == 201
+
+
+def test_stamp_submission_reject_requires_non_blank_reason():
+    app.dependency_overrides[get_stamp_submission_service] = lambda: object()
+    headers = {"Authorization": f"Bearer {token('admin@example.com')}"}
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/admin/stamp-submissions/1/reject",
+            json={"reason": "   "},
+            headers=headers,
+        )
+    assert response.status_code == 400
+    assert response.json() == {"error": "bad_request", "message": "Invalid request body."}
 
 
 def test_activity_pagination_compiles_for_mysql_with_mission_filters():

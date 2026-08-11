@@ -6,6 +6,7 @@ from app.deps.auth import LoginUser, require_admin, require_user
 from app.models import SubmissionStatus
 from app.schemas.common import Pagination
 from app.schemas.stamp_submission import (
+    AdminStampSubmissionResponse,
     RejectSubmission,
     StampSubmissionCreate,
     StampSubmissionResponse,
@@ -40,15 +41,20 @@ async def submit(
 
 
 @router.get("/api/stamp-submissions", response_model=list[StampSubmissionResponse])
-async def list_submissions(
+async def list_own(
     pagination: Annotated[Pagination, Depends()],
     actor: LoginUser = Depends(require_user),
     service=Depends(get_stamp_submission_service),
 ):
-    return await service.list_user(actor, offset=pagination.offset, limit=pagination.size)
+    return await service.list_user(
+        actor, offset=pagination.offset, limit=pagination.size
+    )
 
 
-@router.get("/api/admin/stamp-submissions", response_model=list[StampSubmissionResponse])
+@router.get(
+    "/api/admin/stamp-submissions",
+    response_model=list[AdminStampSubmissionResponse],
+)
 async def list_pending(
     pagination: Annotated[Pagination, Depends()],
     submission_status: SubmissionStatus = Query(

@@ -4,6 +4,8 @@ from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
+from botocore.exceptions import ClientError
+from sqlalchemy.dialects import mysql
 
 from app.deps.auth import LoginUser
 from app.exceptions import ApiError
@@ -27,11 +29,12 @@ from app.repositories.stamp_submission import StampSubmissionRepository
 from app.schemas.course import CourseCreate, CoursePatch
 from app.schemas.recommendation import CourseRecommendationRequest
 from app.schemas.activity import ActivityCreate, ActivityPatch
-from app.schemas.stamp_submission import StampSubmissionCreate
+from app.schemas.stamp_submission import RejectSubmission, StampSubmissionCreate
 from app.services.activity import ActivityService
 from app.services.course import CourseService
 from app.services.recommendation import RecommendationService
 from app.services.stamp_submission import StampSubmissionService
+from app.services.storage import MAX_UPLOAD_BYTES, ProofStorage
 from app.services.weather import WeatherService, base_datetime, grid, weather_cache
 
 
@@ -521,11 +524,11 @@ def test_recommendation_uses_only_safe_candidates_and_validates_ai(monkeypatch, 
 
 
 def test_stamp_submission_requires_owned_published_mission_and_prefix():
-    targets = []
-
     class Repository:
-        async def valid_target(self, *target):
-            targets.append(target)
+        locks = []
+
+        async def valid_target(self, *_, lock=False):
+            self.locks.append(lock)
             return True
 
         async def collected(self, *_):
@@ -549,6 +552,11 @@ def test_stamp_submission_requires_owned_published_mission_and_prefix():
             )
 
     class Storage:
+        validated = []
+
+        def validate(self, object_key):
+            self.validated.append(object_key)
+
         def proof_url(self, _):
             return "signed"
 
@@ -561,14 +569,87 @@ def test_stamp_submission_requires_owned_published_mission_and_prefix():
 
     valid = StampSubmissionCreate(passport_id=1, stamp_id=2, object_key="proofs/1/2/x.jpg")
     result = asyncio.run(service.create(valid, user))
-    assert targets == [(1, 2, 7), (1, 2, 7)]
     assert result["status"] == SubmissionStatus.pending
     assert result["proof_url"] == "signed"
+    assert service.repository.locks == [False, False, True]
+    assert service.storage.validated == ["proofs/1/2/x.jpg"]
+
+
+def test_stamp_submission_rejects_foreign_passport_and_pending_submission():
+    class Repository:
+        valid = False
+        is_pending = False
+
+        async def valid_target(self, *_, **__):
+            return self.valid
+
+        async def collected(self, *_):
+            return False
+
+        async def pending(self, *_):
+            return self.is_pending
+
+    class Storage:
+        def upload(self, *_):
+            raise AssertionError("upload must not be called")
+
+    repository = Repository()
+    service = StampSubmissionService(repository, Storage())
+    body = SimpleNamespace(passport_id=1, stamp_id=2, content_type="image/jpeg")
+    user = LoginUser(7, "user@example.com")
+
+    with pytest.raises(ApiError) as error:
+        asyncio.run(service.upload_url(body, user))
+    assert error.value.status == 404
+
+    repository.valid = True
+    repository.is_pending = True
+    with pytest.raises(ApiError) as error:
+        asyncio.run(service.upload_url(body, user))
+    assert error.value.status == 409
+
+
+def test_rejection_reason_is_trimmed_and_cannot_be_blank():
+    assert RejectSubmission(reason="  사진이 행사와 무관합니다.  ").reason == "사진이 행사와 무관합니다."
+    with pytest.raises(ValueError):
+        RejectSubmission(reason="   ")
+
+
+def test_proof_storage_validates_uploaded_object_metadata():
+    class Client:
+        metadata = {"ContentType": "image/jpeg", "ContentLength": 123}
+        error = None
+
+        def head_object(self, **_):
+            if self.error:
+                raise self.error
+            return self.metadata
+
+    storage = object.__new__(ProofStorage)
+    storage.bucket = "proofs"
+    storage.client = Client()
+    storage.validate("proofs/1/2/x.jpg")
+
+    storage.client.metadata = {
+        "ContentType": "image/jpeg",
+        "ContentLength": MAX_UPLOAD_BYTES + 1,
+    }
+    with pytest.raises(ApiError) as error:
+        storage.validate("proofs/1/2/large.jpg")
+    assert error.value.status == 400
+
+    storage.client.error = ClientError(
+        {"Error": {"Code": "NoSuchKey", "Message": "missing"}}, "HeadObject"
+    )
+    with pytest.raises(ApiError) as error:
+        storage.validate("proofs/1/2/missing.jpg")
+    assert error.value.status == 400
 
 
 def test_approving_submission_creates_collected_stamp():
     class Session:
-        added = []
+        def __init__(self):
+            self.added = []
 
         def add(self, row):
             self.added.append(row)
@@ -598,3 +679,51 @@ def test_approving_submission_creates_collected_stamp():
     assert isinstance(session.added[0], CollectedStamp)
     assert row.status == SubmissionStatus.approved
     assert row.reviewer_id == 7
+
+    session = Session()
+    repository = StampSubmissionRepository(session)
+
+    async def already_collected(*_):
+        return True
+
+    repository.collected = already_collected
+    asyncio.run(repository.approve(row, 7))
+    assert session.added == []
+
+
+def test_stamp_submission_review_is_locked_and_admin_query_joins_activity():
+    statements = []
+
+    class Result:
+        def all(self):
+            return []
+
+    class Session:
+        async def execute(self, statement):
+            statements.append(statement)
+            return Result()
+
+        async def scalar(self, statement):
+            statements.append(statement)
+            return None
+
+    repository = StampSubmissionRepository(Session())
+    asyncio.run(repository.list_status(SubmissionStatus.pending))
+    asyncio.run(repository.get(1))
+    sql = [
+        str(statement.compile(dialect=mysql.dialect(), compile_kwargs={"literal_binds": True}))
+        for statement in statements
+    ]
+    assert "JOIN stamps" in sql[0] and "JOIN activities" in sql[0]
+    assert sql[1].endswith("FOR UPDATE")
+
+
+def test_stamp_submission_cannot_be_reviewed_twice():
+    class Repository:
+        async def get(self, _):
+            return SimpleNamespace(status=SubmissionStatus.rejected)
+
+    service = StampSubmissionService(Repository(), object())
+    with pytest.raises(ApiError) as error:
+        asyncio.run(service.review(1, LoginUser(7, "admin@example.com")))
+    assert error.value.status == 409
