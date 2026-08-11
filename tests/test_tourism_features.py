@@ -356,6 +356,31 @@ def test_file_data_download_and_gangwon_sports_normalization():
     assert road["sport_name"] == "trekking" and road["source_metadata"]["distance"] == "27km"
 
 
+def test_yongpyong_ski_resort_is_snow_and_olympic_legacy():
+    yongpyong = ski_golf_item(
+        {
+            "업소명": "용평스키장",
+            "주소": "강원특별자치도 평창군 대관령면",
+            "업태구분명": "스키장",
+            "영업상태": "영업/정상",
+        }
+    )
+    yongpyong_golf = ski_golf_item(
+        {
+            "업소명": "용평 나인골프클럽",
+            "주소": "강원특별자치도 평창군 대관령면",
+            "업태구분명": "골프장",
+        }
+    )
+
+    assert yongpyong["sport_name"] == "ski"
+    assert yongpyong["source_metadata"]["sport_categories"] == [
+        "snow",
+        "olympic_legacy",
+    ]
+    assert "sport_categories" not in yongpyong_golf["source_metadata"]
+
+
 def test_weather_grid_base_time_and_cache(monkeypatch):
     assert grid(37.5665, 126.9780) == (60, 127)
     assert base_datetime(datetime(2026, 7, 21, 1, 30)) == datetime(2026, 7, 20, 23)

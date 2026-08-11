@@ -307,6 +307,9 @@ def ski_golf_item(row: dict) -> dict:
     name = str(row.get("업소명") or "").strip()
     address = str(row.get("주소") or "").strip()
     sport_name = "ski" if "스키" in kind else "golf"
+    source_metadata = {"business_status": row.get("영업상태"), "type": kind}
+    if "스키" in kind and "용평스키장" in re.sub(r"\s+", "", name):
+        source_metadata["sport_categories"] = ["snow", "olympic_legacy"]
     return {
         "external_id": stable_id(name, address, kind),
         "category": "sports",
@@ -322,7 +325,7 @@ def ski_golf_item(row: dict) -> dict:
         "source_url": "https://www.data.go.kr/data/3045451/fileData.do",
         "starts_at": None,
         "ends_at": None,
-        "source_metadata": {"business_status": row.get("영업상태"), "type": kind},
+        "source_metadata": source_metadata,
     }
 
 
