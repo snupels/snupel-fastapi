@@ -62,6 +62,15 @@ LEPORTS_KEYWORD_SPORT = (
     (("마라톤", "러닝"), "running"),
     (("패러글라이딩", "행글라이딩", "스카이다이빙"), "paragliding"),
 )
+SOURCE_PRIORITY = {
+    "tourapi": 0,
+    "durunubi": 1,
+    "mountain100": 1,
+    "gangwon_marine_facility": 2,
+    "gangwon_marine": 3,
+    "gangwon_oxygen_road": 3,
+    "gangwon_ski_golf": 3,
+}
 
 
 def items(payload: dict) -> tuple[list[dict], int]:
@@ -93,6 +102,49 @@ def pick(row: dict, *names):
 def stable_id(*values) -> str:
     raw = "|".join(str(value or "").strip() for value in values)
     return hashlib.sha256(raw.encode()).hexdigest()[:32]
+
+
+def normalized_place_name(value) -> str:
+    text = str(value or "").lower()
+    for corporate in ("주식회사", "유한회사", "(주)", "㈜"):
+        text = text.replace(corporate, "")
+    return re.sub(r"[^0-9a-z가-힣]", "", text)
+
+
+def duplicate_area(row) -> str:
+    if row.sigun:
+        return normalized_place_name(row.sigun)
+    match = re.search(r"([가-힣]+(?:시|군))", str(row.address or ""))
+    return normalized_place_name(match.group(1)) if match else ""
+
+
+def duplicate_activity_ids(rows: list, protected_ids: set[int] | None = None) -> set[int]:
+    protected = protected_ids or set()
+    groups: dict[tuple[str, str], list] = {}
+    for row in rows:
+        name, area = normalized_place_name(row.place_name), duplicate_area(row)
+        if name and area:
+            groups.setdefault((name, area), []).append(row)
+
+    duplicates: set[int] = set()
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        mission_rows = [row for row in group if row.id in protected]
+        candidates = mission_rows or group
+        survivor = min(
+            candidates,
+            key=lambda row: (
+                SOURCE_PRIORITY.get(str(row.source or ""), 99),
+                0 if row.representative_image_url else 1,
+                0 if row.latitude is not None and row.longitude is not None else 1,
+                row.id,
+            ),
+        )
+        duplicates.update(
+            row.id for row in group if row.id != survivor.id and row.id not in protected
+        )
+    return duplicates
 
 
 def sigun(value) -> str | None:
@@ -422,6 +474,11 @@ class TourismSync:
             "gangwon_oxygen_road",
             [oxygen_road_item(row) for row in oxygen_roads],
             synced_at,
+        )
+        candidates, protected_ids = await self.repository.sports_dedup_candidates()
+        duplicate_ids = duplicate_activity_ids(candidates, protected_ids)
+        result["duplicates_deactivated"] = (
+            await self.repository.deactivate_activity_ids(duplicate_ids)
         )
         return result
 

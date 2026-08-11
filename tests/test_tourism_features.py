@@ -9,6 +9,7 @@ from app.deps.auth import LoginUser
 from app.exceptions import ApiError
 from app.jobs.sync_tourism import (
     TourismSync,
+    duplicate_activity_ids,
     durunubi_item,
     in_gangwon,
     items,
@@ -128,8 +129,80 @@ def test_tourism_sync_requests_durunubi_json():
         async def sync_source(self, *_):
             return 0
 
+        async def sports_dedup_candidates(self):
+            return [], set()
+
+        async def deactivate_activity_ids(self, _ids):
+            return 0
+
     asyncio.run(Sync(None, Repository(), "key").run())
     assert next(params for url, params in calls if "Durunubi" in url)["_type"] == "json"
+
+
+def test_sports_dedup_keeps_one_preferred_source_per_place_and_area():
+    rows = [
+        SimpleNamespace(
+            id=1,
+            source="gangwon_marine",
+            place_name="롱비치 서프스쿨",
+            sigun="양양군",
+            address="양양군 현남면",
+            representative_image_url=None,
+            latitude=None,
+            longitude=None,
+        ),
+        SimpleNamespace(
+            id=2,
+            source="gangwon_marine_facility",
+            place_name="롱비치서프스쿨",
+            sigun="양양군",
+            address="강원도 양양군 현남면",
+            representative_image_url=None,
+            latitude=38.0,
+            longitude=128.0,
+        ),
+        SimpleNamespace(
+            id=3,
+            source="tourapi",
+            place_name="롱비치 서프스쿨",
+            sigun="양양군",
+            address="강원특별자치도 양양군 현남면",
+            representative_image_url="https://tong.visitkorea.or.kr/image.jpg",
+            latitude=38.0,
+            longitude=128.0,
+        ),
+        SimpleNamespace(
+            id=4,
+            source="tourapi",
+            place_name="롱비치 서프스쿨",
+            sigun="강릉시",
+            address="강원특별자치도 강릉시",
+            representative_image_url=None,
+            latitude=None,
+            longitude=None,
+        ),
+    ]
+    assert duplicate_activity_ids(rows) == {1, 2}
+
+
+def test_sports_dedup_never_hides_activity_used_by_a_stamp():
+    rows = [
+        SimpleNamespace(
+            id=id_,
+            source=source,
+            place_name="문암다이브리조트",
+            sigun="고성군",
+            address="강원도 고성군",
+            representative_image_url=image,
+            latitude=None,
+            longitude=None,
+        )
+        for id_, source, image in (
+            (10, "gangwon_marine", None),
+            (11, "tourapi", "https://tong.visitkorea.or.kr/image.jpg"),
+        )
+    ]
+    assert duplicate_activity_ids(rows, {10}) == {11}
 
 
 def test_file_data_download_and_gangwon_sports_normalization():

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy import and_, exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Activity, Course, CourseStamp, Stamp
@@ -207,3 +207,29 @@ class ActivityRepository(CrudRepository):
                 row.is_active = False
         await self.session.flush()
         return len(items)
+
+    async def sports_dedup_candidates(self) -> tuple[list[Activity], set[int]]:
+        rows = list(
+            await self.session.scalars(
+                select(Activity).where(
+                    Activity.category == ActivityCategory.sports,
+                    Activity.is_active.is_(True),
+                    Activity.source.is_not(None),
+                )
+            )
+        )
+        protected_ids = set(
+            await self.session.scalars(select(Stamp.activity_id).distinct())
+        )
+        return rows, protected_ids
+
+    async def deactivate_activity_ids(self, activity_ids: set[int]) -> int:
+        if not activity_ids:
+            return 0
+        await self.session.execute(
+            update(Activity)
+            .where(Activity.id.in_(activity_ids))
+            .values(is_active=False)
+        )
+        await self.session.flush()
+        return len(activity_ids)
