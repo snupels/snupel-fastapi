@@ -2,7 +2,18 @@ from decimal import Decimal
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, ForeignKey, Index, JSON, Numeric, String, Text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Enum as SqlEnum,
+    ForeignKey,
+    Index,
+    JSON,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.mysql import BIGINT
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -40,11 +51,17 @@ class Activity(TimestampMixin, Base):
 
 class Stamp(TimestampMixin, Base):
     __tablename__ = "stamps"
-    __table_args__ = (Index("stamps_activity_id_idx", "activity_id"),)
+    __table_args__ = (
+        Index("stamps_activity_id_idx", "activity_id"),
+        UniqueConstraint("stamp_catalog_id", name="stamps_stamp_catalog_unique"),
+    )
 
     id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     activity_id: Mapped[int] = mapped_column(
         BIGINT(unsigned=True), ForeignKey("activities.id", ondelete="CASCADE")
+    )
+    stamp_catalog_id: Mapped[int | None] = mapped_column(
+        BIGINT(unsigned=True), ForeignKey("stamp_catalog.id", ondelete="SET NULL")
     )
     description: Mapped[str | None] = mapped_column(Text)
     image_url: Mapped[str | None] = mapped_column(Text)
