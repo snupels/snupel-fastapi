@@ -2,6 +2,7 @@ import os
 from uuid import uuid4
 
 import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 
 from app.exceptions import ApiError
 
@@ -53,6 +54,25 @@ class ProofStorage:
             Params={"Bucket": self.bucket, "Key": object_key},
             ExpiresIn=UPLOAD_EXPIRES_IN,
         )
+
+    def validate(self, object_key: str) -> None:
+        if not self.client:
+            raise ApiError(503, "storage_unavailable", "Proof storage is not configured.")
+        try:
+            metadata = self.client.head_object(Bucket=self.bucket, Key=object_key)
+        except ClientError as error:
+            code = str(error.response.get("Error", {}).get("Code", ""))
+            if code in {"404", "NoSuchKey", "NotFound"}:
+                raise ApiError(400, "bad_request", "Proof image was not uploaded.") from error
+            raise ApiError(503, "storage_unavailable", "Proof storage is unavailable.") from error
+        except BotoCoreError as error:
+            raise ApiError(503, "storage_unavailable", "Proof storage is unavailable.") from error
+
+        if (
+            metadata.get("ContentType") not in CONTENT_TYPES
+            or not 1 <= metadata.get("ContentLength", 0) <= MAX_UPLOAD_BYTES
+        ):
+            raise ApiError(400, "bad_request", "Invalid proof image.")
 
 
 def get_proof_storage() -> ProofStorage:

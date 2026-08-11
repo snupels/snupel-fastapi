@@ -1,15 +1,19 @@
 from datetime import datetime
 
-from pydantic import Field
+from pydantic import AliasChoices, Field, field_validator
 
-from app.models import SubmissionStatus
-from app.schemas.common import Dto, TimestampedResponse
+from app.models import ActivityCategory, SubmissionStatus
+from app.schemas.common import Dto, OrmDto, TimestampedResponse
 
 
 class UploadUrlRequest(Dto):
-    passport_id: int = Field(gt=0)
-    stamp_id: int = Field(gt=0)
-    content_type: str
+    passport_id: int = Field(
+        gt=0, validation_alias=AliasChoices("passportId", "passport_id")
+    )
+    stamp_id: int = Field(gt=0, validation_alias=AliasChoices("stampId", "stamp_id"))
+    content_type: str = Field(
+        validation_alias=AliasChoices("contentType", "content_type")
+    )
 
 
 class UploadUrlResponse(Dto):
@@ -20,9 +24,15 @@ class UploadUrlResponse(Dto):
 
 
 class StampSubmissionCreate(Dto):
-    passport_id: int = Field(gt=0)
-    stamp_id: int = Field(gt=0)
-    object_key: str = Field(min_length=1, max_length=500)
+    passport_id: int = Field(
+        gt=0, validation_alias=AliasChoices("passportId", "passport_id")
+    )
+    stamp_id: int = Field(gt=0, validation_alias=AliasChoices("stampId", "stamp_id"))
+    object_key: str = Field(
+        min_length=1,
+        max_length=500,
+        validation_alias=AliasChoices("objectKey", "object_key"),
+    )
 
 
 class StampSubmissionResponse(TimestampedResponse):
@@ -36,5 +46,26 @@ class StampSubmissionResponse(TimestampedResponse):
     proof_url: str | None = Field(default=None, serialization_alias="proofUrl")
 
 
+class SubmissionActivityResponse(OrmDto):
+    id: int = Field(gt=0)
+    category: ActivityCategory
+    place_name: str | None = Field(serialization_alias="placeName")
+    address: str | None
+    starts_at: datetime | None = Field(serialization_alias="startsAt")
+    ends_at: datetime | None = Field(serialization_alias="endsAt")
+
+
+class AdminStampSubmissionResponse(StampSubmissionResponse):
+    activity: SubmissionActivityResponse
+
+
 class RejectSubmission(Dto):
     reason: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("reason")
+    @classmethod
+    def strip_reason(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("reason cannot be blank")
+        return value
