@@ -521,8 +521,11 @@ def test_recommendation_uses_only_safe_candidates_and_validates_ai(monkeypatch, 
 
 
 def test_stamp_submission_requires_owned_published_mission_and_prefix():
+    targets = []
+
     class Repository:
-        async def valid_target(self, *_):
+        async def valid_target(self, *target):
+            targets.append(target)
             return True
 
         async def collected(self, *_):
@@ -558,6 +561,7 @@ def test_stamp_submission_requires_owned_published_mission_and_prefix():
 
     valid = StampSubmissionCreate(passport_id=1, stamp_id=2, object_key="proofs/1/2/x.jpg")
     result = asyncio.run(service.create(valid, user))
+    assert targets == [(1, 2, 7), (1, 2, 7)]
     assert result["status"] == SubmissionStatus.pending
     assert result["proof_url"] == "signed"
 

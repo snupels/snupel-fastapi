@@ -1,12 +1,11 @@
 import os
 import secrets
-import time
-from collections import defaultdict
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 
 from app.exceptions import ApiError
+from app.deps.rate_limit import RateLimiter
 from app.schemas.auth import (
     AuthProvider,
     AuthResponse,
@@ -18,21 +17,13 @@ from app.schemas.auth import (
 from app.services.auth import AuthService, get_auth_service
 from app.services.oauth import authorization_url, is_allowed_redirect_uri
 
-rate_limits: dict[str, tuple[int, float]] = defaultdict(lambda: (0, 0))
+rate_limiter = RateLimiter(20)
 
 
 def rate_limit(request: Request) -> None:
-    now = time.monotonic()
     host = request.client.host if request.client else "local"
     key = f"{host}:{request.url.path}"
-    count, reset_at = rate_limits[key]
-    if reset_at <= now:
-        rate_limits[key] = (1, now + 60)
-        return
-    count += 1
-    rate_limits[key] = (count, reset_at)
-    # ponytail: process-local limiter; move to Redis when running multiple API instances.
-    if count > 20:
+    if not rate_limiter.allow(key):
         raise ApiError(429, "rate_limited", "Too many requests.")
 
 

@@ -14,18 +14,18 @@ class StampSubmissionService:
         self.repository = repository
         self.storage = storage
 
-    async def _target(self, passport_id: int, stamp_id: int) -> None:
-        if not await self.repository.valid_target(passport_id, stamp_id):
+    async def _target(self, passport_id: int, stamp_id: int, user_id: int) -> None:
+        if not await self.repository.valid_target(passport_id, stamp_id, user_id):
             raise ApiError(404, "not_found", "Published passport mission stamp not found.")
         if await self.repository.collected(passport_id, stamp_id):
             raise ApiError(409, "conflict", "Stamp is already collected.")
 
     async def upload_url(self, body, user: LoginUser):
-        await self._target(body.passport_id, body.stamp_id)
+        await self._target(body.passport_id, body.stamp_id, user.id)
         return self.storage.upload(body.passport_id, body.stamp_id, body.content_type)
 
     async def create(self, body, user: LoginUser):
-        await self._target(body.passport_id, body.stamp_id)
+        await self._target(body.passport_id, body.stamp_id, user.id)
         prefix = f"proofs/{body.passport_id}/{body.stamp_id}/"
         if not body.object_key.startswith(prefix):
             raise ApiError(400, "bad_request", "Invalid proof object key.")
@@ -57,9 +57,6 @@ class StampSubmissionService:
     ):
         rows = await self.repository.list_user(user.id, offset=offset, limit=limit)
         return [self._response(row) for row in rows]
-
-    async def list(self, *, offset: int = 0, limit: int = 20):
-        return [self._response(row) for row in await self.repository.list(offset=offset, limit=limit)]
 
     async def list_admin(
         self, status: SubmissionStatus, *, offset: int = 0, limit: int = 20

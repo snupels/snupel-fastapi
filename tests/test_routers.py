@@ -129,7 +129,11 @@ def test_router_success_validation_auth_and_service_errors(path, dependency, adm
 
 def test_health_and_openapi():
     with TestClient(app) as client:
-        assert client.get("/api/health").json() == {"status": "ok"}
+        health = client.get("/api/health")
+        assert health.json() == {"status": "ok"}
+        assert health.headers["x-content-type-options"] == "nosniff"
+        assert health.headers["x-frame-options"] == "DENY"
+        assert health.headers["referrer-policy"] == "no-referrer"
         assert client.get("/api/docs").status_code == 200
 
 
@@ -272,13 +276,35 @@ def test_activity_map_rejects_inverted_bounds():
         ("/api/passports", get_passport_service),
         ("/api/collected-badges", get_collected_badge_service),
         ("/api/collected-stamps", get_collected_stamp_service),
-        ("/api/stamp-submissions", get_stamp_submission_service),
     ],
 )
 def test_data_lists_are_public(path, dependency):
     app.dependency_overrides[dependency] = lambda: FakeService(result=[])
     with TestClient(app) as client:
         assert client.get(path).status_code == 200
+
+
+def test_stamp_submission_lists_enforce_user_and_admin_access():
+    class Service:
+        async def list_user(self, user, *, offset, limit):
+            self.user_id = user.id
+            return []
+
+        async def list_admin(self, _status, *, offset, limit):
+            return []
+
+    service = Service()
+    app.dependency_overrides[get_stamp_submission_service] = lambda: service
+    user_headers = {"Authorization": f"Bearer {token('user@example.com')}"}
+    admin_headers = {"Authorization": f"Bearer {token('admin@example.com')}"}
+
+    with TestClient(app) as client:
+        assert client.get("/api/stamp-submissions").status_code == 401
+        assert client.get("/api/stamp-submissions", headers=user_headers).status_code == 200
+        assert service.user_id == 7
+        assert client.get("/api/admin/stamp-submissions").status_code == 401
+        assert client.get("/api/admin/stamp-submissions", headers=user_headers).status_code == 403
+        assert client.get("/api/admin/stamp-submissions", headers=admin_headers).status_code == 200
 
 
 def test_activity_pagination_compiles_for_mysql_with_mission_filters():

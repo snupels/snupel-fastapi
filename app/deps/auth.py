@@ -1,4 +1,5 @@
 import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -9,7 +10,7 @@ from dataclasses import dataclass
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.config import admins
+from app.config import admins, production_secret
 from app.exceptions import ApiError
 
 DEFAULT_EXPIRES_IN = 60 * 60 * 24 * 7
@@ -26,6 +27,7 @@ def _secret() -> bytes:
     value = os.getenv("JWT_SECRET")
     if not value:
         raise RuntimeError("JWT_SECRET is required.")
+    production_secret("JWT_SECRET", value)
     return value.encode()
 
 
@@ -79,7 +81,14 @@ def verify_access_token(token: str, now: int | None = None) -> LoginUser | None:
         ):
             return None
         return LoginUser(user_id, body["email"])
-    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+    except (
+        ValueError,
+        KeyError,
+        TypeError,
+        UnicodeDecodeError,
+        binascii.Error,
+        json.JSONDecodeError,
+    ):
         return None
 
 

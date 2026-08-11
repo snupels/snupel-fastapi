@@ -17,12 +17,13 @@ class StampSubmissionRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def valid_target(self, passport_id: int, stamp_id: int) -> bool:
+    async def valid_target(self, passport_id: int, stamp_id: int, user_id: int) -> bool:
         return bool(
             await self.session.scalar(
                 select(
                     exists().where(
                         Passport.id == passport_id,
+                        Passport.user_id == user_id,
                         CourseStamp.stamp_id == stamp_id,
                         Course.id == CourseStamp.course_id,
                         Course.is_published.is_(True),
@@ -74,16 +75,6 @@ class StampSubmissionRepository:
                 select(StampSubmission)
                 .join(Passport, Passport.id == StampSubmission.passport_id)
                 .where(Passport.user_id == user_id)
-                .order_by(StampSubmission.id.desc())
-                .offset(offset)
-                .limit(limit)
-            )
-        )
-
-    async def list(self, *, offset: int = 0, limit: int = 20):
-        return list(
-            await self.session.scalars(
-                select(StampSubmission)
                 .order_by(StampSubmission.id.desc())
                 .offset(offset)
                 .limit(limit)
