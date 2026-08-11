@@ -85,7 +85,7 @@ def test_tourism_sync_requests_durunubi_json():
             calls.append((url, params))
             return [{"code": "32", "name": "강원"}] if url.endswith("/areaCode2") else []
 
-        async def _odcloud_pages(self, _path):
+        async def _file_rows(self, _url):
             return []
 
     class Repository:
@@ -96,16 +96,23 @@ def test_tourism_sync_requests_durunubi_json():
     assert next(params for url, params in calls if "Durunubi" in url)["_type"] == "json"
 
 
-def test_odcloud_pagination_and_gangwon_sports_normalization():
-    class Sync(TourismSync):
-        async def _get(self, _url, params):
-            data = [{"id": 1}, {"id": 2}] if params["page"] == 1 else [{"id": 3}]
-            return {"data": data, "totalCount": 3}
+def test_file_data_download_and_gangwon_sports_normalization():
+    class Response:
+        def __init__(self, *, text="", content=b""):
+            self.text = text
+            self.content = content
 
-    assert asyncio.run(Sync(None, None, "key")._odcloud_pages("/path")) == [
-        {"id": 1},
-        {"id": 2},
-        {"id": 3},
+    class Sync(TourismSync):
+        async def _download(self, url):
+            if url == "page":
+                return Response(text='{"contentUrl":"https://example.com/data.csv?a=1&amp;b=2"}')
+            assert url == "https://example.com/data.csv?a=1&b=2"
+            return Response(
+                content="상호,주소\n파도서프,강원특별자치도 양양군".encode("cp949")
+            )
+
+    assert asyncio.run(Sync(None, None, "key")._file_rows("page")) == [
+        {"상호": "파도서프", "주소": "강원특별자치도 양양군"}
     ]
 
     ski = ski_golf_item(

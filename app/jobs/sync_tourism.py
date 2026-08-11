@@ -1,8 +1,12 @@
 import asyncio
+import csv
 import hashlib
+import io
 import os
+import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from html import unescape
 
 import httpx
 
@@ -15,11 +19,10 @@ MOUNTAIN_URL = (
     "https://apis.data.go.kr/B553662/top100FamtListBasiInfoService/"
     "getTop100FamtListBasiInfoList"
 )
-ODCLOUD_BASE = "https://api.odcloud.kr/api"
-SKI_GOLF_PATH = "/3045451/v1/uddi:d293c815-7fbb-493d-b4aa-ab633f1f4a51"
-MARINE_PATH = "/3045471/v1/uddi:6d7ebca1-79b7-49fd-8f4e-df0edc07dfc5"
-MARINE_FACILITY_PATH = "/15111483/v1/uddi:e16ac283-544f-4259-945b-a5e6fb3026f1"
-OXYGEN_ROAD_PATH = "/3045500/v1/uddi:ec25b0d0-984a-4d87-bc39-cfc7fa1b39da"
+SKI_GOLF_DATA_URL = "https://www.data.go.kr/data/3045451/fileData.do"
+MARINE_DATA_URL = "https://www.data.go.kr/data/3045471/fileData.do"
+MARINE_FACILITY_DATA_URL = "https://www.data.go.kr/data/15111483/fileData.do"
+OXYGEN_ROAD_DATA_URL = "https://www.data.go.kr/data/3045500/fileData.do"
 
 
 def items(payload: dict) -> tuple[list[dict], int]:
@@ -263,18 +266,33 @@ class TourismSync:
                 return result
             page += 1
 
-    async def _odcloud_pages(self, path: str) -> list[dict]:
-        page, result = 1, []
-        while True:
-            payload = await self._get(
-                f"{ODCLOUD_BASE}{path}",
-                {"page": page, "perPage": 100, "returnType": "JSON"},
-            )
-            batch = payload.get("data") or []
-            result.extend(batch)
-            if not batch or len(result) >= int(payload.get("totalCount", len(result))):
-                return result
-            page += 1
+    async def _download(self, url: str):
+        for attempt in range(3):
+            try:
+                response = await self.client.get(url)
+                if response.status_code == 429 or response.status_code >= 500:
+                    raise httpx.HTTPStatusError(
+                        "retryable", request=response.request, response=response
+                    )
+                response.raise_for_status()
+                return response
+            except httpx.HTTPError:
+                if attempt == 2:
+                    raise
+                await asyncio.sleep(2**attempt)
+        raise RuntimeError
+
+    async def _file_rows(self, page_url: str) -> list[dict]:
+        page = await self._download(page_url)
+        match = re.search(r'"contentUrl"\s*:\s*"([^"]+)"', page.text)
+        if not match:
+            raise ValueError(f"data.go.kr download URL not found: {page_url}")
+        file_response = await self._download(unescape(match.group(1)))
+        try:
+            content = file_response.content.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            content = file_response.content.decode("cp949")
+        return list(csv.DictReader(io.StringIO(content)))
 
     async def run(self) -> dict[str, int]:
         common = {"MobileOS": "ETC", "MobileApp": "Snupel", "_type": "json"}
@@ -297,14 +315,14 @@ class TourismSync:
             for row in await self._pages(MOUNTAIN_URL, {"type": "json"})
             if in_gangwon(row)
         ]
-        ski_golf = await self._odcloud_pages(SKI_GOLF_PATH)
-        marine = await self._odcloud_pages(MARINE_PATH)
+        ski_golf = await self._file_rows(SKI_GOLF_DATA_URL)
+        marine = await self._file_rows(MARINE_DATA_URL)
         marine_facilities = [
             row
-            for row in await self._odcloud_pages(MARINE_FACILITY_PATH)
+            for row in await self._file_rows(MARINE_FACILITY_DATA_URL)
             if "해양레저" in str(row.get("업종") or "")
         ]
-        oxygen_roads = await self._odcloud_pages(OXYGEN_ROAD_PATH)
+        oxygen_roads = await self._file_rows(OXYGEN_ROAD_DATA_URL)
         synced_at = datetime.now()
         result = {}
         result["tourapi"] = await self.repository.sync_source(
