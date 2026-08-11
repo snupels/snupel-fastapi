@@ -23,6 +23,40 @@ SKI_GOLF_DATA_URL = "https://www.data.go.kr/data/3045451/fileData.do"
 MARINE_DATA_URL = "https://www.data.go.kr/data/3045471/fileData.do"
 MARINE_FACILITY_DATA_URL = "https://www.data.go.kr/data/15111483/fileData.do"
 OXYGEN_ROAD_DATA_URL = "https://www.data.go.kr/data/3045500/fileData.do"
+LEPORTS_CONTENT_TYPE = "28"
+LEPORTS_CODE_SPORT = {
+    "A03020600": "golf",
+    "A03021100": "ski",
+    "A03021200": "snowboard",
+    "A03021300": "skating",
+    "A03021400": "snow_sledding",
+    "A03021800": "climbing",
+    "A03022200": "mtb",
+    "A03022600": "trekking",
+    "A03030100": "surfing",
+    "A03030200": "kayak",
+    "A03030300": "sailing",
+    "A03030400": "scuba",
+    "A03030800": "rafting",
+    "A03040300": "paragliding",
+}
+LEPORTS_KEYWORD_SPORT = (
+    (("스노보드",), "snowboard"),
+    (("스키", "눈썰매"), "ski"),
+    (("스케이트", "빙상"), "skating"),
+    (("서핑", "윈드서핑", "제트스키", "웨이크보드", "수상스키"), "surfing"),
+    (("래프팅",), "rafting"),
+    (("카약", "카누"), "kayak"),
+    (("요트", "세일링"), "sailing"),
+    (("스쿠버", "스노클"), "scuba"),
+    (("골프",), "golf"),
+    (("MTB", "산악자전거"), "mtb"),
+    (("트레킹", "트래킹", "둘레길"), "trekking"),
+    (("등산", "암벽", "클라이밍"), "climbing"),
+    (("자전거", "사이클"), "cycling"),
+    (("마라톤", "러닝"), "running"),
+    (("패러글라이딩", "행글라이딩", "스카이다이빙"), "paragliding"),
+)
 
 
 def items(payload: dict) -> tuple[list[dict], int]:
@@ -63,13 +97,44 @@ def sigun(value) -> str | None:
     )
 
 
+def tourism_sport(row: dict) -> str | None:
+    if str(row.get("contenttypeid") or "") != LEPORTS_CONTENT_TYPE:
+        return None
+    code = str(row.get("cat3") or "").upper()
+    if code in LEPORTS_CODE_SPORT:
+        return LEPORTS_CODE_SPORT[code]
+    text = " ".join(str(row.get(key) or "") for key in ("title", "cat1", "cat2", "cat3"))
+    upper_text = text.upper()
+    for keywords, sport in LEPORTS_KEYWORD_SPORT:
+        if any(keyword.upper() in upper_text for keyword in keywords):
+            return sport
+    cat2 = str(row.get("cat2") or "").upper()
+    if cat2 == "A0303":
+        return "marine"
+    if cat2 == "A0304":
+        return "aerial"
+    if cat2 == "A0305":
+        return "multi_sports"
+    return "athletics"
+
+
+def tourism_image(row: dict) -> str | None:
+    value = row.get("firstimage") or row.get("firstimage2")
+    if not value:
+        return None
+    return str(value).replace(
+        "http://tong.visitkorea.or.kr/", "https://tong.visitkorea.or.kr/", 1
+    )
+
+
 def tourism_item(row: dict, category: str = "tour") -> dict:
+    sport_name = tourism_sport(row) if category == "tour" else None
     return {
         "external_id": str(row["contentid"]),
-        "category": category,
+        "category": "sports" if sport_name else category,
         "place_name": row.get("title") or "",
-        "representative_image_url": row.get("firstimage") or row.get("firstimage2"),
-        "sport_name": None,
+        "representative_image_url": tourism_image(row),
+        "sport_name": sport_name,
         "region": "강원특별자치도",
         "sigun": sigun(row.get("addr1")),
         "latitude": number(row.get("mapy")),

@@ -18,6 +18,7 @@ from app.jobs.sync_tourism import (
     oxygen_road_item,
     ski_golf_item,
     tourism_item,
+    tourism_sport,
 )
 from app.models import ActivityCategory, CollectedStamp, CourseTheme, SubmissionStatus
 from app.repositories.stamp_submission import StampSubmissionRepository
@@ -56,6 +57,40 @@ def test_tourism_pagination_and_normalization():
     assert mountain_item(mountain)["sigun"] == "속초시"
     assert durunubi_item(trail)["external_id"] == "7"
     assert mountain_item(mountain)["place_name"] == "설악산"
+
+
+def test_tourapi_leports_are_normalized_as_sports_with_their_own_image():
+    surf = tourism_item(
+        {
+            "contentid": "28",
+            "contenttypeid": "28",
+            "title": "양양 서핑학교",
+            "addr1": "강원특별자치도 양양군 현남면",
+            "cat2": "A0303",
+            "cat3": "A03030100",
+            "firstimage": "http://tong.visitkorea.or.kr/cms/resource/01/image.jpg",
+        }
+    )
+    assert surf["category"] == "sports"
+    assert surf["sport_name"] == "surfing"
+    assert surf["representative_image_url"] == (
+        "https://tong.visitkorea.or.kr/cms/resource/01/image.jpg"
+    )
+    assert surf["source_metadata"]["contenttypeid"] == "28"
+    assert tourism_sport({"contenttypeid": "12", "title": "일반 관광지"}) is None
+
+
+@pytest.mark.parametrize(
+    ("row", "expected"),
+    [
+        ({"contenttypeid": 28, "cat3": "A03021100", "title": "리조트"}, "ski"),
+        ({"contenttypeid": "28", "cat2": "A0303", "title": "수상 체험장"}, "marine"),
+        ({"contenttypeid": "28", "title": "평창 MTB 파크"}, "mtb"),
+        ({"contenttypeid": "28", "cat2": "A0304", "title": "비행 체험"}, "aerial"),
+    ],
+)
+def test_tourapi_leports_sport_classification(row, expected):
+    assert tourism_sport(row) == expected
 
 
 def test_activity_categories_require_sport_type_only_for_sports():
