@@ -12,7 +12,11 @@ from app.jobs.sync_tourism import (
     durunubi_item,
     in_gangwon,
     items,
+    marine_facility_item,
+    marine_item,
     mountain_item,
+    oxygen_road_item,
+    ski_golf_item,
     tourism_item,
 )
 from app.models import ActivityCategory, CollectedStamp, CourseTheme, SubmissionStatus
@@ -81,12 +85,45 @@ def test_tourism_sync_requests_durunubi_json():
             calls.append((url, params))
             return [{"code": "32", "name": "강원"}] if url.endswith("/areaCode2") else []
 
+        async def _odcloud_pages(self, _path):
+            return []
+
     class Repository:
         async def sync_source(self, *_):
             return 0
 
     asyncio.run(Sync(None, Repository(), "key").run())
     assert next(params for url, params in calls if "Durunubi" in url)["_type"] == "json"
+
+
+def test_odcloud_pagination_and_gangwon_sports_normalization():
+    class Sync(TourismSync):
+        async def _get(self, _url, params):
+            data = [{"id": 1}, {"id": 2}] if params["page"] == 1 else [{"id": 3}]
+            return {"data": data, "totalCount": 3}
+
+    assert asyncio.run(Sync(None, None, "key")._odcloud_pages("/path")) == [
+        {"id": 1},
+        {"id": 2},
+        {"id": 3},
+    ]
+
+    ski = ski_golf_item(
+        {"업소명": "설원리조트", "주소": "강원특별자치도 평창군", "업태구분명": "스키장", "영업상태": "영업/정상"}
+    )
+    golf = ski_golf_item(
+        {"업소명": "강원CC", "주소": "강원특별자치도 춘천시", "업태구분명": "골프장"}
+    )
+    marine = marine_item({"시군": "양양군", "상호": "파도서프", "주소": "강원특별자치도 양양군"})
+    facility = marine_facility_item(
+        {"시설 코드": "1", "시설 명": "해변센터", "업종": "해양레저", "위도": "38.1", "경도": "128.6", "시군구": "고성군"}
+    )
+    road = oxygen_road_item({"시도명": "강원특별자치도", "시군명": "철원군", "길명칭": "쇠둘레길", "걷는거리": "27km"})
+    assert ski["sport_name"] == "ski" and ski["sigun"] == "평창군"
+    assert golf["sport_name"] == "golf"
+    assert marine["sport_name"] == "marine" and marine["sigun"] == "양양군"
+    assert str(facility["latitude"]) == "38.1" and facility["sport_name"] == "marine"
+    assert road["sport_name"] == "trekking" and road["source_metadata"]["distance"] == "27km"
 
 
 def test_weather_grid_base_time_and_cache(monkeypatch):

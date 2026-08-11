@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import os
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -14,6 +15,11 @@ MOUNTAIN_URL = (
     "https://apis.data.go.kr/B553662/top100FamtListBasiInfoService/"
     "getTop100FamtListBasiInfoList"
 )
+ODCLOUD_BASE = "https://api.odcloud.kr/api"
+SKI_GOLF_PATH = "/3045451/v1/uddi:d293c815-7fbb-493d-b4aa-ab633f1f4a51"
+MARINE_PATH = "/3045471/v1/uddi:6d7ebca1-79b7-49fd-8f4e-df0edc07dfc5"
+MARINE_FACILITY_PATH = "/15111483/v1/uddi:e16ac283-544f-4259-945b-a5e6fb3026f1"
+OXYGEN_ROAD_PATH = "/3045500/v1/uddi:ec25b0d0-984a-4d87-bc39-cfc7fa1b39da"
 
 
 def items(payload: dict) -> tuple[list[dict], int]:
@@ -40,6 +46,11 @@ def date(value) -> datetime | None:
 
 def pick(row: dict, *names):
     return next((row[name] for name in names if row.get(name) not in (None, "")), None)
+
+
+def stable_id(*values) -> str:
+    raw = "|".join(str(value or "").strip() for value in values)
+    return hashlib.sha256(raw.encode()).hexdigest()[:32]
 
 
 def sigun(value) -> str | None:
@@ -119,6 +130,101 @@ def mountain_item(row: dict) -> dict:
     }
 
 
+def ski_golf_item(row: dict) -> dict:
+    kind = str(row.get("업태구분명") or "")
+    name = str(row.get("업소명") or "").strip()
+    address = str(row.get("주소") or "").strip()
+    sport_name = "ski" if "스키" in kind else "golf"
+    return {
+        "external_id": stable_id(name, address, kind),
+        "category": "sports",
+        "place_name": name,
+        "representative_image_url": None,
+        "sport_name": sport_name,
+        "region": "강원특별자치도",
+        "sigun": sigun(address),
+        "latitude": None,
+        "longitude": None,
+        "summary": f"강원특별자치도 등록 {kind}",
+        "address": address or None,
+        "source_url": "https://www.data.go.kr/data/3045451/fileData.do",
+        "starts_at": None,
+        "ends_at": None,
+        "source_metadata": {"business_status": row.get("영업상태"), "type": kind},
+    }
+
+
+def marine_item(row: dict) -> dict:
+    name = str(row.get("상호") or "").strip()
+    address = str(row.get("주소") or "").strip()
+    return {
+        "external_id": stable_id(name, address),
+        "category": "sports",
+        "place_name": name,
+        "representative_image_url": None,
+        "sport_name": "marine",
+        "region": "강원특별자치도",
+        "sigun": str(row.get("시군") or "").strip() or sigun(address),
+        "latitude": None,
+        "longitude": None,
+        "summary": "강원 동해안 해양·수상레저 체험 업체",
+        "address": address or None,
+        "source_url": "https://www.data.go.kr/data/3045471/fileData.do",
+        "starts_at": None,
+        "ends_at": None,
+        "source_metadata": None,
+    }
+
+
+def marine_facility_item(row: dict) -> dict:
+    name = str(row.get("시설 명") or "").strip()
+    address = str(row.get("주소") or row.get("지번 주소") or "").strip()
+    return {
+        "external_id": stable_id(row.get("시설 코드"), name, address),
+        "category": "sports",
+        "place_name": name,
+        "representative_image_url": None,
+        "sport_name": "marine",
+        "region": str(row.get("시도") or "강원특별자치도").strip(),
+        "sigun": str(row.get("시군구") or "").strip() or sigun(address),
+        "latitude": number(row.get("위도")),
+        "longitude": number(row.get("경도")),
+        "summary": "강원 동해안 해양레저 관광시설",
+        "address": address or None,
+        "source_url": "https://www.data.go.kr/data/15111483/fileData.do",
+        "starts_at": None,
+        "ends_at": None,
+        "source_metadata": {"business_type": row.get("업종"), "town": row.get("읍면동")},
+    }
+
+
+def oxygen_road_item(row: dict) -> dict:
+    name = str(row.get("길명칭") or "").strip()
+    guide = str(row.get("길도우미") or "").strip()
+    return {
+        "external_id": stable_id(row.get("시군명"), name),
+        "category": "sports",
+        "place_name": name,
+        "representative_image_url": None,
+        "sport_name": "trekking",
+        "region": str(row.get("시도명") or "강원특별자치도").strip(),
+        "sigun": str(row.get("시군명") or "").strip() or None,
+        "latitude": None,
+        "longitude": None,
+        "summary": str(row.get("코스정보") or "강원 산소길 트레킹 코스").strip(),
+        "address": guide or None,
+        "source_url": "https://www.data.go.kr/data/3045500/fileData.do",
+        "starts_at": None,
+        "ends_at": None,
+        "source_metadata": {
+            "contact": row.get("문의전화"),
+            "distance": row.get("걷는거리"),
+            "duration": row.get("걷는시간"),
+            "nearby": row.get("주변 볼거리"),
+        },
+    }
+
+
 def in_gangwon(row: dict) -> bool:
     if "강원" in " ".join(str(value) for value in row.values() if value is not None):
         return True
@@ -157,6 +263,19 @@ class TourismSync:
                 return result
             page += 1
 
+    async def _odcloud_pages(self, path: str) -> list[dict]:
+        page, result = 1, []
+        while True:
+            payload = await self._get(
+                f"{ODCLOUD_BASE}{path}",
+                {"page": page, "perPage": 100, "returnType": "JSON"},
+            )
+            batch = payload.get("data") or []
+            result.extend(batch)
+            if not batch or len(result) >= int(payload.get("totalCount", len(result))):
+                return result
+            page += 1
+
     async def run(self) -> dict[str, int]:
         common = {"MobileOS": "ETC", "MobileApp": "Snupel", "_type": "json"}
         codes = await self._pages(f"{KOR_BASE}/areaCode2", common)
@@ -178,6 +297,14 @@ class TourismSync:
             for row in await self._pages(MOUNTAIN_URL, {"type": "json"})
             if in_gangwon(row)
         ]
+        ski_golf = await self._odcloud_pages(SKI_GOLF_PATH)
+        marine = await self._odcloud_pages(MARINE_PATH)
+        marine_facilities = [
+            row
+            for row in await self._odcloud_pages(MARINE_FACILITY_PATH)
+            if "해양레저" in str(row.get("업종") or "")
+        ]
+        oxygen_roads = await self._odcloud_pages(OXYGEN_ROAD_PATH)
         synced_at = datetime.now()
         result = {}
         result["tourapi"] = await self.repository.sync_source(
@@ -191,6 +318,22 @@ class TourismSync:
         )
         result["mountain100"] = await self.repository.sync_source(
             "mountain100", [mountain_item(row) for row in mountains], synced_at
+        )
+        result["gangwon_ski_golf"] = await self.repository.sync_source(
+            "gangwon_ski_golf", [ski_golf_item(row) for row in ski_golf], synced_at
+        )
+        result["gangwon_marine"] = await self.repository.sync_source(
+            "gangwon_marine", [marine_item(row) for row in marine], synced_at
+        )
+        result["gangwon_marine_facility"] = await self.repository.sync_source(
+            "gangwon_marine_facility",
+            [marine_facility_item(row) for row in marine_facilities],
+            synced_at,
+        )
+        result["gangwon_oxygen_road"] = await self.repository.sync_source(
+            "gangwon_oxygen_road",
+            [oxygen_road_item(row) for row in oxygen_roads],
+            synced_at,
         )
         return result
 
