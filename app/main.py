@@ -15,6 +15,7 @@ from .routes.passport import router as passports_router
 from .routes.recommendation import router as recommendations_router
 from .routes.stamp_submission import router as stamp_submissions_router
 from .routes.stamp_catalog import router as stamp_catalog_router
+from .routes.stampbook import router as stampbook_router
 from .routes.weather import router as weather_router
 
 app = FastAPI(
@@ -60,6 +61,7 @@ for router in (
     collected_stamps_router,
     stamp_submissions_router,
     stamp_catalog_router,
+    stampbook_router,
     recommendations_router,
     weather_router,
 ):
