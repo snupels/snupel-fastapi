@@ -7,7 +7,9 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.database import get_session
+from app.exceptions import ApiError
 from app.repositories.activity import ActivityRepository
+from app.repositories.course import CourseRepository
 from app.services.weather import WeatherService, get_weather_service
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -15,9 +17,15 @@ logger = logging.getLogger(__name__)
 
 
 class RecommendationService:
-    def __init__(self, repository: ActivityRepository, weather: WeatherService) -> None:
+    def __init__(
+        self,
+        repository: ActivityRepository,
+        weather: WeatherService,
+        course_repository: CourseRepository | None = None,
+    ) -> None:
         self.repository = repository
         self.weather = weather
+        self.course_repository = course_repository
 
     @staticmethod
     def _minutes(activity) -> int:
@@ -72,10 +80,18 @@ class RecommendationService:
             ),
         }
 
-    async def recommend(self, body) -> dict:
-        candidates = await self.repository.recommendation_candidates(
-            body.region, body.sport, body.theme.value
-        )
+    async def recommend(self, body, *, require_stamp: bool = False) -> dict:
+        if require_stamp:
+            candidates = await self.repository.recommendation_candidates(
+                body.region,
+                body.sport,
+                body.theme.value,
+                require_stamp=True,
+            )
+        else:
+            candidates = await self.repository.recommendation_candidates(
+                body.region, body.sport, body.theme.value
+            )
         fallback = self._fallback(candidates, body.available_minutes)
         api_key = os.getenv("OPENROUTER_API_KEY")
         if not api_key:
@@ -188,9 +204,20 @@ class RecommendationService:
             logger.warning("OpenRouter recommendation fallback: %s", error, exc_info=True)
             return self._result(fallback, candidates, body, used_ai=False)
 
+    async def generate_mission(self, body) -> dict:
+        result = await self.recommend(body, require_stamp=True)
+        if not result["stops"] or self.course_repository is None:
+            raise ApiError(409, "mission_unavailable", "Mission could not be generated.")
+        course = await self.course_repository.create_generated_mission(body, result["stops"])
+        if course is None:
+            raise ApiError(409, "mission_unavailable", "Mission could not be generated.")
+        return result | {"course": course}
+
 
 def get_recommendation_service(
     session: AsyncSession = Depends(get_session),
     weather: WeatherService = Depends(get_weather_service),
 ) -> RecommendationService:
-    return RecommendationService(ActivityRepository(session), weather)
+    return RecommendationService(
+        ActivityRepository(session), weather, CourseRepository(session)
+    )

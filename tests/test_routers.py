@@ -150,6 +150,54 @@ def test_course_recommendations_are_available_to_logged_in_users():
     assert response.json() == {"stops": [], "usedAi": False, "matchScore": 0}
 
 
+def test_only_admin_can_generate_ai_mission_drafts():
+    class RecommendationService:
+        async def generate_mission(self, body):
+            assert body.title == "설악산 힐링 미션"
+            return {
+                "course": {
+                    "id": 9,
+                    "category": "sports",
+                    "sport_name": "hiking",
+                    "recommended_companion": None,
+                    "representative_image_url": None,
+                    "estimated_duration_minutes": 90,
+                    "theme": "healing",
+                    "title": body.title,
+                    "description": None,
+                    "is_published": False,
+                    "created_at": NOW,
+                    "updated_at": NOW,
+                },
+                "stops": [{"activity_id": 4, "reason": "fit", "estimated_minutes": 90}],
+                "used_ai": True,
+                "match_score": 96,
+            }
+
+    app.dependency_overrides[get_recommendation_service] = RecommendationService
+    body = {
+        "title": "설악산 힐링 미션",
+        "theme": "healing",
+        "region": "강원특별자치도",
+        "sport": "hiking",
+        "availableMinutes": 120,
+    }
+    user_headers = {"Authorization": f"Bearer {token('user@example.com')}"}
+    admin_headers = {"Authorization": f"Bearer {token('admin@example.com')}"}
+
+    with TestClient(app) as client:
+        assert client.post(
+            "/api/admin/course-missions/generate", json=body, headers=user_headers
+        ).status_code == 403
+        response = client.post(
+            "/api/admin/course-missions/generate", json=body, headers=admin_headers
+        )
+
+    assert response.status_code == 201
+    assert response.json()["course"]["isPublished"] is False
+    assert response.json()["matchScore"] == 96
+
+
 def test_stamp_catalog_is_public_and_serves_images():
     service = FakeService(result=[
         {"id": 1, "region_ko": "춘천", "region_en": "CHUNCHEON", "sport_ko": "산악", "sport_en": "MOUNTAIN", "color": "#2F6B4F", "image_url": "https://assets.example.com/stamps/01-chuncheon-mountain.svg", "created_at": NOW, "updated_at": NOW}

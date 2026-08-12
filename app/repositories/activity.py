@@ -159,7 +159,13 @@ class ActivityRepository(CrudRepository):
         return (await self.session.execute(query)).mappings().all()
 
     async def recommendation_candidates(
-        self, region: str, sport: str | None, theme: str, limit: int = 30
+        self,
+        region: str,
+        sport: str | None,
+        theme: str,
+        limit: int = 30,
+        *,
+        require_stamp: bool = False,
     ):
         theme_match = exists().where(
             Stamp.activity_id == Activity.id,
@@ -173,6 +179,8 @@ class ActivityRepository(CrudRepository):
         )
         if sport:
             query = query.where(Activity.sport_name == sport)
+        if require_stamp:
+            query = query.where(exists().where(Stamp.activity_id == Activity.id))
         rows = (
             await self.session.execute(
                 query.order_by(theme_match.desc(), Activity.id).limit(limit)

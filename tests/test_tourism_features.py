@@ -24,11 +24,19 @@ from app.jobs.sync_tourism import (
     tourism_item,
     tourism_sport,
 )
-from app.models import ActivityCategory, CollectedStamp, CourseTheme, SubmissionStatus
+from app.models import (
+    ActivityCategory,
+    CollectedStamp,
+    Course,
+    CourseStamp,
+    CourseTheme,
+    SubmissionStatus,
+)
 from app.repositories.activity import ActivityRepository
+from app.repositories.course import CourseRepository
 from app.repositories.stamp_submission import StampSubmissionRepository
 from app.schemas.course import CourseCreate, CoursePatch
-from app.schemas.recommendation import CourseRecommendationRequest
+from app.schemas.recommendation import CourseRecommendationRequest, MissionGenerationRequest
 from app.schemas.activity import ActivityCreate, ActivityPatch
 from app.schemas.stamp_submission import RejectSubmission, StampSubmissionCreate
 from app.services.activity import ActivityService
@@ -543,7 +551,7 @@ def test_recommendation_candidates_mark_theme_matches():
 
     result = asyncio.run(
         ActivityRepository(Session()).recommendation_candidates(
-            "강원특별자치도", "hiking", "healing"
+            "강원특별자치도", "hiking", "healing", require_stamp=True
         )
     )
     sql = str(
@@ -553,7 +561,84 @@ def test_recommendation_candidates_mark_theme_matches():
     assert result == [candidate]
     assert candidate.recommendation_theme_match is True
     assert "courses.theme = 'healing'" in sql
+    assert sql.count("EXISTS") >= 2
     assert "ORDER BY" in sql and "DESC" in sql
+
+
+def test_admin_mission_generation_persists_a_reviewable_draft():
+    course = SimpleNamespace(id=9, is_published=False)
+
+    class CourseRepository:
+        async def create_generated_mission(self, body, stops):
+            assert body.title == "설악산 힐링 미션"
+            assert stops[0]["activity_id"] == 4
+            return course
+
+    service = RecommendationService(object(), object(), CourseRepository())
+
+    async def recommend(_body, *, require_stamp):
+        assert require_stamp is True
+        return {
+            "stops": [{"activity_id": 4, "reason": "fit", "estimated_minutes": 90}],
+            "used_ai": True,
+            "match_score": 96,
+        }
+
+    service.recommend = recommend
+    body = MissionGenerationRequest(
+        title="설악산 힐링 미션",
+        theme=CourseTheme.healing,
+        region="강원특별자치도",
+        sport="hiking",
+        availableMinutes=120,
+    )
+    result = asyncio.run(service.generate_mission(body))
+
+    assert result["course"] is course
+    assert result["used_ai"] is True
+
+
+def test_generated_mission_links_ordered_stamps_and_stays_unpublished():
+    class Result:
+        def all(self):
+            return [(4, 40), (5, 50)]
+
+    class Session:
+        def __init__(self):
+            self.added = []
+
+        async def execute(self, _statement):
+            return Result()
+
+        def add(self, row):
+            self.added.append(row)
+
+        async def flush(self):
+            course = next((row for row in self.added if isinstance(row, Course)), None)
+            if course is not None and course.id is None:
+                course.id = 9
+
+        async def refresh(self, _row):
+            pass
+
+    session = Session()
+    body = MissionGenerationRequest(
+        title="강원 스포츠 미션",
+        theme=CourseTheme.thrill,
+        region="강원특별자치도",
+        sport="running",
+        availableMinutes=120,
+    )
+    stops = [
+        {"activity_id": 4, "estimated_minutes": 40},
+        {"activity_id": 5, "estimated_minutes": 50},
+    ]
+    course = asyncio.run(CourseRepository(session).create_generated_mission(body, stops))
+
+    links = [row for row in session.added if isinstance(row, CourseStamp)]
+    assert course.is_published is False
+    assert course.estimated_duration_minutes == 90
+    assert [(link.stamp_id, link.position) for link in links] == [(40, 1), (50, 2)]
 
 
 def test_stamp_submission_requires_owned_published_mission_and_prefix():

@@ -2,6 +2,7 @@ from pydantic import Field
 
 from app.models import CourseTheme
 from app.schemas.common import Dto
+from app.schemas.course import CourseResponse
 
 
 class CourseRecommendationRequest(Dto):
@@ -23,3 +24,12 @@ class CourseRecommendationResponse(Dto):
     stops: list[RecommendedStop]
     used_ai: bool = Field(serialization_alias="usedAi")
     match_score: int = Field(ge=0, le=100, serialization_alias="matchScore")
+
+
+class MissionGenerationRequest(CourseRecommendationRequest):
+    title: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+
+
+class MissionGenerationResponse(CourseRecommendationResponse):
+    course: CourseResponse
