@@ -25,6 +25,7 @@ from app.jobs.sync_tourism import (
     tourism_sport,
 )
 from app.models import ActivityCategory, CollectedStamp, CourseTheme, SubmissionStatus
+from app.repositories.course import CourseRepository
 from app.repositories.stamp_submission import StampSubmissionRepository
 from app.schemas.course import CourseCreate, CoursePatch
 from app.schemas.recommendation import CourseRecommendationRequest
@@ -727,3 +728,64 @@ def test_stamp_submission_cannot_be_reviewed_twice():
     with pytest.raises(ApiError) as error:
         asyncio.run(service.review(1, LoginUser(7, "admin@example.com")))
     assert error.value.status == 409
+
+
+def test_course_itinerary_uses_position_and_activity_details():
+    statements = []
+
+    class Result:
+        def mappings(self):
+            return self
+
+        def all(self):
+            return []
+
+    class Session:
+        async def execute(self, statement):
+            statements.append(statement)
+            return Result()
+
+    assert asyncio.run(CourseRepository(Session()).itinerary(7)) == []
+    sql = str(
+        statements[0].compile(dialect=mysql.dialect(), compile_kwargs={"literal_binds": True})
+    )
+    assert "JOIN stamps" in sql and "JOIN activities" in sql
+    assert "course_stamps.course_id = 7" in sql
+    assert "ORDER BY course_stamps.position, course_stamps.id" in sql
+
+
+def test_course_itinerary_uses_stop_durations_and_course_total():
+    class Repository:
+        async def get(self, _item_id):
+            return SimpleNamespace(
+                id=7,
+                title="강릉 스포츠 코스",
+                description=None,
+                category=ActivityCategory.sports,
+                sport_name="running",
+                theme=CourseTheme.thrill,
+                recommended_companion="friends",
+                estimated_duration_minutes=None,
+            )
+
+        async def itinerary(self, _item_id):
+            base = {
+                "position": 1,
+                "stamp_id": 2,
+                "activity_id": 3,
+                "category": ActivityCategory.sports,
+                "place_name": "강릉 종합운동장",
+                "sport_name": "running",
+                "address": "강릉시",
+                "latitude": 37.7,
+                "longitude": 128.8,
+            }
+            return [
+                base | {"source_metadata": {"duration_minutes": 45}},
+                base | {"position": 2, "stamp_id": 4, "activity_id": 5, "source_metadata": {}},
+            ]
+
+    result = asyncio.run(CourseService(Repository(), "Course").itinerary(7))
+
+    assert result["estimated_duration_minutes"] == 105
+    assert [stop["estimated_minutes"] for stop in result["stops"]] == [45, 60]
