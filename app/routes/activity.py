@@ -1,6 +1,7 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Path, Query
+from fastapi.responses import RedirectResponse
 
 from app.routes.base import create_crud_router
 
@@ -84,6 +85,19 @@ async def explore_events(
         offset=pagination.offset,
         limit=pagination.size,
     )
+
+
+@router.get(
+    "/api/events/{item_id}/google-calendar",
+    response_class=RedirectResponse,
+    status_code=307,
+    tags=["Activities"],
+)
+async def add_event_to_google_calendar(
+    item_id: int = Path(gt=0),
+    service=Depends(get_activity_service),
+):
+    return RedirectResponse(await service.google_calendar_url(item_id))
 
 
 router.include_router(create_crud_router(

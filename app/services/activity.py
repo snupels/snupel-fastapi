@@ -1,3 +1,6 @@
+from datetime import time, timedelta
+from urllib.parse import urlencode
+
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -62,6 +65,36 @@ class ActivityService(CrudService):
 
     async def map_items(self, **filters):
         return await self.repository.map_items(**filters)
+
+    async def google_calendar_url(self, item_id: int) -> str:
+        event = await self.get(item_id)
+        if event.category != ActivityCategory.event:
+            raise ApiError(404, "not_found", "Event not found.")
+        if event.starts_at is None or (
+            event.ends_at is not None and event.ends_at < event.starts_at
+        ):
+            raise ApiError(409, "calendar_unavailable", "Event schedule is unavailable.")
+
+        if event.starts_at.time() == time.min:
+            end = (event.ends_at or event.starts_at) + timedelta(days=1)
+            dates = f"{event.starts_at:%Y%m%d}/{end:%Y%m%d}"
+        else:
+            end = event.ends_at or event.starts_at + timedelta(hours=1)
+            dates = f"{event.starts_at:%Y%m%dT%H%M%S}/{end:%Y%m%dT%H%M%S}"
+
+        details = "\n\n".join(
+            value for value in (event.summary, event.source_url) if value
+        )
+        return "https://calendar.google.com/calendar/render?" + urlencode(
+            {
+                "action": "TEMPLATE",
+                "text": event.place_name or "Sports Passport event",
+                "dates": dates,
+                "details": details,
+                "location": event.address or event.place_name or "",
+                "ctz": "Asia/Seoul",
+            }
+        )
 
 
 def get_activity_service(session: AsyncSession = Depends(get_session)) -> ActivityService:

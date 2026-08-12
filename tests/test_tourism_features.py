@@ -727,3 +727,43 @@ def test_stamp_submission_cannot_be_reviewed_twice():
     with pytest.raises(ApiError) as error:
         asyncio.run(service.review(1, LoginUser(7, "admin@example.com")))
     assert error.value.status == 409
+
+
+def test_google_calendar_link_uses_exclusive_end_date():
+    class Repository:
+        async def get(self, _item_id):
+            return SimpleNamespace(
+                category=ActivityCategory.event,
+                place_name="강릉 스포츠 행사",
+                starts_at=datetime(2026, 8, 11),
+                ends_at=datetime(2026, 8, 12),
+                summary="스포츠 행사 안내",
+                source_url="https://example.com/event",
+                address="강릉시",
+            )
+
+    url = asyncio.run(ActivityService(Repository(), "Activity").google_calendar_url(1))
+
+    assert "text=%EA%B0%95%EB%A6%89+%EC%8A%A4%ED%8F%AC%EC%B8%A0+%ED%96%89%EC%82%AC" in url
+    assert "dates=20260811%2F20260813" in url
+    assert "ctz=Asia%2FSeoul" in url
+
+
+def test_google_calendar_link_rejects_non_event_and_missing_schedule():
+    class Repository:
+        row = SimpleNamespace(category=ActivityCategory.sports, starts_at=None)
+
+        async def get(self, _item_id):
+            return self.row
+
+    repository = Repository()
+    service = ActivityService(repository, "Activity")
+
+    with pytest.raises(ApiError) as error:
+        asyncio.run(service.google_calendar_url(1))
+    assert (error.value.status, error.value.code) == (404, "not_found")
+
+    repository.row = SimpleNamespace(category=ActivityCategory.event, starts_at=None, ends_at=None)
+    with pytest.raises(ApiError) as error:
+        asyncio.run(service.google_calendar_url(1))
+    assert (error.value.status, error.value.code) == (409, "calendar_unavailable")

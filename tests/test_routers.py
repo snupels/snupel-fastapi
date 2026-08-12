@@ -448,3 +448,17 @@ def test_activity_explore_forwards_sigun_filter():
         assert client.get("/api/sports?sigun=강릉시").status_code == 200
 
     assert service.filters["sigun"] == "강릉시"
+
+
+def test_event_google_calendar_route_redirects():
+    class Service:
+        async def google_calendar_url(self, item_id):
+            assert item_id == 9
+            return "https://calendar.google.com/calendar/render?action=TEMPLATE"
+
+    app.dependency_overrides[get_activity_service] = Service
+    with TestClient(app, follow_redirects=False) as client:
+        response = client.get("/api/events/9/google-calendar")
+
+    assert response.status_code == 307
+    assert response.headers["location"].startswith("https://calendar.google.com/")
