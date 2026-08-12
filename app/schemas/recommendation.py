@@ -22,3 +22,4 @@ class RecommendedStop(Dto):
 class CourseRecommendationResponse(Dto):
     stops: list[RecommendedStop]
     used_ai: bool = Field(serialization_alias="usedAi")
+    match_score: int = Field(ge=0, le=100, serialization_alias="matchScore")
