@@ -496,3 +496,51 @@ def test_activity_explore_forwards_sigun_filter():
         assert client.get("/api/sports?sigun=강릉시").status_code == 200
 
     assert service.filters["sigun"] == "강릉시"
+
+
+def test_course_itinerary_returns_ordered_stops():
+    class Service:
+        async def itinerary(self, item_id):
+            assert item_id == 7
+            return {
+                "id": 7,
+                "title": "강릉 스포츠 코스",
+                "description": None,
+                "category": "sports",
+                "sport_name": "running",
+                "theme": "thrill",
+                "recommended_companion": "friends",
+                "estimated_duration_minutes": 45,
+                "stops": [
+                    {
+                        "position": 1,
+                        "stamp_id": 2,
+                        "activity_id": 3,
+                        "category": "sports",
+                        "place_name": "강릉 종합운동장",
+                        "sport_name": "running",
+                        "address": "강릉시",
+                        "latitude": 37.7,
+                        "longitude": 128.8,
+                        "estimated_minutes": 45,
+                    }
+                ],
+            }
+
+    app.dependency_overrides[get_course_service] = Service
+    with TestClient(app) as client:
+        response = client.get("/api/courses/7/itinerary")
+
+    assert response.status_code == 200
+    assert response.json()["stops"][0] == {
+        "position": 1,
+        "stampId": 2,
+        "activityId": 3,
+        "category": "sports",
+        "placeName": "강릉 종합운동장",
+        "sportName": "running",
+        "address": "강릉시",
+        "latitude": 37.7,
+        "longitude": 128.8,
+        "estimatedMinutes": 45,
+    }
