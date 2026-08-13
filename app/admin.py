@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from sqlalchemy import select
-from sqladmin import Admin, ModelView
+from sqladmin import Admin, BaseView, ModelView, expose
 from sqladmin.authentication import AuthenticationBackend
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
@@ -30,8 +30,10 @@ from .models import (
     StampSubmission,
     User,
 )
+from .repositories.stamp import StampRepository
 from .services.auth import password_hasher
 from .services.mail import send_mail
+from .services.stamp import StampService
 
 OTP_EXPIRES_IN = 600
 OTP_RESEND_AFTER = 60
@@ -174,6 +176,23 @@ class StampAdmin(DefaultAdmin, model=Stamp):
     pass
 
 
+class StampSeedAdmin(BaseView):
+    name = "Seed Stamps"
+
+    @expose("/stamp-seed", methods=["GET", "POST"])
+    async def seed(self, request: Request):
+        result = None
+        if request.method == "POST":
+            async with SessionLocal() as session:
+                result = await StampService(StampRepository(session)).seed_catalog()
+                await session.commit()
+        return await self.templates.TemplateResponse(
+            request,
+            "sqladmin/stamp_seed.html",
+            {"result": result},
+        )
+
+
 class CollectedStampAdmin(DefaultAdmin, model=CollectedStamp):
     pass
 
@@ -217,6 +236,7 @@ def setup_admin(app) -> Admin:
         PassportAdmin,
         ActivityAdmin,
         StampAdmin,
+        StampSeedAdmin,
         CollectedStampAdmin,
         StampSubmissionAdmin,
         BadgeAdmin,
