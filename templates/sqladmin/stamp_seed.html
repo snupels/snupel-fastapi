@@ -1,0 +1,18 @@
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<div class="container-xl">
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">Seed catalog stamps</h3></div>
+    <div class="card-body">
+      {% if result %}
+      <div class="alert alert-success" role="alert">
+        Created {{ result.created }}, existing {{ result.existing }}, total {{ result.total }}.
+      </div>
+      {% endif %}
+      <form method="post">
+        <button class="btn btn-primary" type="submit">Create missing stamps</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
