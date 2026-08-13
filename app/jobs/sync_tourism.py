@@ -559,12 +559,16 @@ class TourismSync:
         return result
 
 
-async def main() -> None:
+async def sync_tourism() -> dict[str, int]:
     key = os.getenv("DATA_GO_KR_SERVICE_KEY")
     if not key:
         raise RuntimeError("DATA_GO_KR_SERVICE_KEY is required")
     async with SessionLocal.begin() as session, httpx.AsyncClient(timeout=20) as client:
-        counts = await TourismSync(client, ActivityRepository(session), key).run()
+        return await TourismSync(client, ActivityRepository(session), key).run()
+
+
+async def main() -> None:
+    counts = await sync_tourism()
     print(" ".join(f"{source}={count}" for source, count in counts.items()))
 
 

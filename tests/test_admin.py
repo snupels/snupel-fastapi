@@ -5,9 +5,9 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 import app.admin as admin_module
-from app.admin import AdminAuth, pending_codes
+from app.admin import AdminAuth, CollectedStampAdmin, StampAdmin, pending_codes
 from app.main import app
-from app.models import Activity, Stamp, StampCatalog
+from app.models import Activity, CollectedStamp, Stamp, StampCatalog
 from app.repositories.stamp import StampRepository
 
 
@@ -100,3 +100,9 @@ def test_stamp_seed_creates_missing_rows_and_fixes_image_keys(monkeypatch):
     assert isinstance(stamp, Stamp)
     assert stamp.activity_id == 7 and stamp.stamp_catalog_id == 1
     assert stamp.image_url.endswith("/stamps/01-chuncheon-mountain.svg")
+
+
+def test_activity_id_moves_to_collected_stamp_admin_view():
+    assert "activity_id" not in StampAdmin().get_list_columns()
+    assert "activity_id" in CollectedStampAdmin().get_list_columns()
+    assert CollectedStamp.activity_id in CollectedStampAdmin.form_excluded_columns

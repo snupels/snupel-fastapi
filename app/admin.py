@@ -17,6 +17,7 @@ from .config import admins, production_secret
 from .config.database import SessionLocal, engine
 from .deps.auth import LoginUser, sign_access_token, verify_access_token
 from .deps.rate_limit import RateLimiter
+from .jobs.sync_tourism import sync_tourism
 from .models import (
     Activity,
     Badge,
@@ -173,7 +174,14 @@ class ActivityAdmin(DefaultAdmin, model=Activity):
 
 
 class StampAdmin(DefaultAdmin, model=Stamp):
-    pass
+    column_list = [
+        Stamp.id,
+        Stamp.stamp_catalog_id,
+        Stamp.description,
+        Stamp.image_url,
+        Stamp.created_at,
+        Stamp.updated_at,
+    ]
 
 
 class StampSeedAdmin(BaseView):
@@ -194,7 +202,20 @@ class StampSeedAdmin(BaseView):
 
 
 class CollectedStampAdmin(DefaultAdmin, model=CollectedStamp):
-    pass
+    form_excluded_columns = [CollectedStamp.activity_id]
+
+
+class TourismSyncAdmin(BaseView):
+    name = "Sync Tourism"
+
+    @expose("/tourism-sync", methods=["GET", "POST"])
+    async def sync(self, request: Request):
+        result = await sync_tourism() if request.method == "POST" else None
+        return await self.templates.TemplateResponse(
+            request,
+            "sqladmin/tourism_sync.html",
+            {"result": result},
+        )
 
 
 class StampSubmissionAdmin(DefaultAdmin, model=StampSubmission):
@@ -238,6 +259,7 @@ def setup_admin(app) -> Admin:
         StampAdmin,
         StampSeedAdmin,
         CollectedStampAdmin,
+        TourismSyncAdmin,
         StampSubmissionAdmin,
         BadgeAdmin,
         CollectedBadgeAdmin,
