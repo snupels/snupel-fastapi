@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from sqlalchemy import and_, exists, func, or_, select, update
+from sqlalchemy import and_, exists, func, literal, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Activity, Course, CourseStamp, Stamp
@@ -161,9 +161,10 @@ class ActivityRepository(CrudRepository):
     async def recommendation_candidates(
         self,
         region: str,
+        sigun: str | None,
         sport: str | None,
         theme: str,
-        limit: int = 30,
+        limit: int = 60,
         *,
         require_stamp: bool = False,
     ):
@@ -174,21 +175,24 @@ class ActivityRepository(CrudRepository):
             Course.is_published.is_(True),
             Course.theme == theme,
         )
-        query = select(Activity, theme_match.label("theme_match")).where(
-            self._available(), Activity.region == region
-        )
-        if sport:
-            query = query.where(Activity.sport_name == sport)
+        sport_match = Activity.sport_name == sport if sport else True
+        query = select(
+            Activity,
+            theme_match.label("theme_match"),
+            sport_match.label("sport_match") if sport else literal(True),
+        ).where(self._available(), Activity.region == region)
+        if sigun:
+            query = query.where(Activity.sigun == sigun)
         if require_stamp:
             query = query.where(exists().where(Stamp.activity_id == Activity.id))
-        rows = (
-            await self.session.execute(
-                query.order_by(theme_match.desc(), Activity.id).limit(limit)
-            )
-        ).all()
-        for activity, matches_theme in rows:
+        ordering = [theme_match.desc(), Activity.id]
+        if sport:
+            ordering.insert(0, sport_match.desc())
+        rows = (await self.session.execute(query.order_by(*ordering).limit(limit))).all()
+        for activity, matches_theme, matches_sport in rows:
             activity.recommendation_theme_match = matches_theme
-        return [activity for activity, _ in rows]
+            activity.recommendation_sport_match = matches_sport
+        return [activity for activity, _, _ in rows]
 
     async def sync_source(self, source: str, items: list[dict], synced_at: datetime) -> int:
         existing = {

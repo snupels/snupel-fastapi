@@ -469,7 +469,9 @@ def test_recommendation_uses_only_safe_candidates_and_validates_ai(monkeypatch, 
         place_name="설악산",
         category=ActivityCategory.sports,
         region="강원특별자치도",
+        sigun="속초시",
         sport_name="hiking",
+        summary="설악산의 대표 등산 코스",
         source_metadata={"duration_minutes": 90},
         latitude=38.1,
         longitude=128.4,
@@ -477,7 +479,7 @@ def test_recommendation_uses_only_safe_candidates_and_validates_ai(monkeypatch, 
     )
 
     class Repository:
-        async def recommendation_candidates(self, *_):
+        async def recommendation_candidates(self, *_, **__):
             return [candidate]
 
     class Weather:
@@ -495,7 +497,20 @@ def test_recommendation_uses_only_safe_candidates_and_validates_ai(monkeypatch, 
         def json(self):
             return {
                 "choices": [
-                    {"message": {"content": json.dumps({"stops": [{"activityId": 999 if self.invalid else 4, "reason": "fit", "estimatedMinutes": 90}]})}}
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "stops": [
+                                        {
+                                            "activityId": 999 if self.invalid else 4,
+                                            "reason": "fit",
+                                        }
+                                    ]
+                                }
+                            )
+                        }
+                    }
                 ]
             }
 
@@ -526,6 +541,7 @@ def test_recommendation_uses_only_safe_candidates_and_validates_ai(monkeypatch, 
         "match_score": 96,
     }
     assert "latitude" not in prompt and "longitude" not in prompt and "email" not in prompt
+    assert "속초시" in prompt and "설악산의 대표 등산 코스" in prompt
     assert '"matchScore": 96' in prompt
     assert captured["provider"]["data_collection"] == "deny"
     Response.invalid = True
@@ -542,7 +558,7 @@ def test_recommendation_candidates_mark_theme_matches():
 
     class Result:
         def all(self):
-            return [(candidate, True)]
+            return [(candidate, True, True)]
 
     class Session:
         async def execute(self, statement):
@@ -551,7 +567,7 @@ def test_recommendation_candidates_mark_theme_matches():
 
     result = asyncio.run(
         ActivityRepository(Session()).recommendation_candidates(
-            "강원특별자치도", "hiking", "healing", require_stamp=True
+            "강원특별자치도", "양양군", "hiking", "healing", require_stamp=True
         )
     )
     sql = str(
@@ -560,9 +576,53 @@ def test_recommendation_candidates_mark_theme_matches():
 
     assert result == [candidate]
     assert candidate.recommendation_theme_match is True
+    assert candidate.recommendation_sport_match is True
     assert "courses.theme = 'healing'" in sql
+    assert "activities.sigun = '양양군'" in sql
     assert sql.count("EXISTS") >= 2
     assert "ORDER BY" in sql and "DESC" in sql
+
+
+def test_recommendation_keeps_stops_close_and_counts_travel(monkeypatch):
+    def activity(item_id, category, sigun, latitude, longitude, sport=None):
+        return SimpleNamespace(
+            id=item_id,
+            place_name=f"장소 {item_id}",
+            category=category,
+            region="강원특별자치도",
+            sigun=sigun,
+            sport_name=sport,
+            summary=None,
+            source_metadata=None,
+            latitude=latitude,
+            longitude=longitude,
+            recommendation_theme_match=False,
+            recommendation_sport_match=sport == "kayak",
+        )
+
+    candidates = [
+        activity(1, ActivityCategory.sports, "춘천시", 37.8569, 127.6863, "kayak"),
+        activity(2, ActivityCategory.tour, "춘천시", 37.8669, 127.6963),
+        activity(3, ActivityCategory.sports, "인제군", 38.0690, 128.1713, "kayak"),
+    ]
+
+    class Repository:
+        async def recommendation_candidates(self, *_, **__):
+            return candidates
+
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    body = CourseRecommendationRequest(
+        theme=CourseTheme.thrill,
+        region="강원특별자치도",
+        sport="kayak",
+        availableMinutes=180,
+    )
+    result = asyncio.run(RecommendationService(Repository(), object()).recommend(body))
+
+    assert [stop["activity_id"] for stop in result["stops"]] == [1, 2]
+    assert sum(stop["estimated_minutes"] for stop in result["stops"]) <= 180
+    assert result["stops"][1]["estimated_minutes"] > 45
+    assert result["used_ai"] is False
 
 
 def test_admin_mission_generation_persists_a_reviewable_draft():

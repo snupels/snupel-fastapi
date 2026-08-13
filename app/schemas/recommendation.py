@@ -8,6 +8,7 @@ from app.schemas.course import CourseResponse
 class CourseRecommendationRequest(Dto):
     theme: CourseTheme
     region: str = Field(min_length=1, max_length=100)
+    sigun: str | None = Field(default=None, max_length=100)
     sport: str | None = Field(default=None, max_length=100)
     available_minutes: int = Field(
         gt=0, le=1440, validation_alias="availableMinutes", serialization_alias="availableMinutes"
