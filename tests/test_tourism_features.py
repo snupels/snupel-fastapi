@@ -25,6 +25,7 @@ from app.jobs.sync_tourism import (
     tourism_sport,
 )
 from app.models import ActivityCategory, CollectedStamp, CourseTheme, SubmissionStatus
+from app.repositories.activity import ActivityRepository
 from app.repositories.course import CourseRepository
 from app.repositories.stamp_submission import StampSubmissionRepository
 from app.schemas.course import CourseCreate, CoursePatch
@@ -465,6 +466,7 @@ def test_recommendation_uses_only_safe_candidates_and_validates_ai(monkeypatch, 
         source_metadata={"duration_minutes": 90},
         latitude=38.1,
         longitude=128.4,
+        recommendation_theme_match=True,
     )
 
     class Repository:
@@ -514,14 +516,45 @@ def test_recommendation_uses_only_safe_candidates_and_validates_ai(monkeypatch, 
     assert result == {
         "stops": [{"activity_id": 4, "reason": "fit", "estimated_minutes": 90}],
         "used_ai": True,
+        "match_score": 96,
     }
     assert "latitude" not in prompt and "longitude" not in prompt and "email" not in prompt
+    assert '"matchScore": 96' in prompt
     assert captured["provider"]["data_collection"] == "deny"
     Response.invalid = True
     fallback = asyncio.run(RecommendationService(Repository(), Weather()).recommend(body))
     assert fallback["used_ai"] is False
+    assert fallback["match_score"] == 96
     assert fallback["stops"][0]["activity_id"] == 4
     assert "OpenRouter recommendation fallback" in caplog.text
+
+
+def test_recommendation_candidates_mark_theme_matches():
+    candidate = SimpleNamespace(id=4)
+    statements = []
+
+    class Result:
+        def all(self):
+            return [(candidate, True)]
+
+    class Session:
+        async def execute(self, statement):
+            statements.append(statement)
+            return Result()
+
+    result = asyncio.run(
+        ActivityRepository(Session()).recommendation_candidates(
+            "강원특별자치도", "hiking", "healing"
+        )
+    )
+    sql = str(
+        statements[0].compile(dialect=mysql.dialect(), compile_kwargs={"literal_binds": True})
+    )
+
+    assert result == [candidate]
+    assert candidate.recommendation_theme_match is True
+    assert "courses.theme = 'healing'" in sql
+    assert "ORDER BY" in sql and "DESC" in sql
 
 
 def test_stamp_submission_requires_owned_published_mission_and_prefix():

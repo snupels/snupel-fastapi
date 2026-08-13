@@ -136,7 +136,7 @@ def test_health_and_openapi():
 def test_course_recommendations_are_available_to_logged_in_users():
     class RecommendationService:
         async def recommend(self, _body):
-            return {"stops": [], "used_ai": False}
+            return {"stops": [], "used_ai": False, "match_score": 0}
 
     app.dependency_overrides[get_recommendation_service] = RecommendationService
     headers = {"Authorization": f"Bearer {token('user@example.com')}"}
@@ -147,7 +147,7 @@ def test_course_recommendations_are_available_to_logged_in_users():
         response = client.post("/api/course-recommendations", json=body, headers=headers)
 
     assert response.status_code == 200
-    assert response.json() == {"stops": [], "usedAi": False}
+    assert response.json() == {"stops": [], "usedAi": False, "matchScore": 0}
 
 
 def test_stamp_catalog_is_public_and_serves_images():

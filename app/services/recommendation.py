@@ -43,6 +43,35 @@ class RecommendationService:
             used += minutes
         return stops
 
+    def _match_score(self, activity_ids, candidates, body) -> int:
+        by_id = {activity.id: activity for activity in candidates}
+        selected = [by_id[item_id] for item_id in activity_ids if item_id in by_id]
+        if not selected:
+            return 0
+        count = len(selected)
+        region = sum(activity.region == body.region for activity in selected) / count
+        sport = (
+            1
+            if body.sport is None
+            else sum(activity.sport_name == body.sport for activity in selected) / count
+        )
+        theme = sum(
+            bool(getattr(activity, "recommendation_theme_match", False))
+            for activity in selected
+        ) / count
+        used_minutes = sum(self._minutes(activity) for activity in selected)
+        time_fit = min(used_minutes / body.available_minutes, 1)
+        return round(35 * region + 25 * sport + 25 * theme + 15 * time_fit)
+
+    def _result(self, stops, candidates, body, *, used_ai: bool) -> dict:
+        return {
+            "stops": stops,
+            "used_ai": used_ai,
+            "match_score": self._match_score(
+                [stop["activity_id"] for stop in stops], candidates, body
+            ),
+        }
+
     async def recommend(self, body) -> dict:
         candidates = await self.repository.recommendation_candidates(
             body.region, body.sport, body.theme.value
@@ -51,10 +80,10 @@ class RecommendationService:
         api_key = os.getenv("OPENROUTER_API_KEY")
         if not api_key:
             logger.warning("OpenRouter recommendation fallback: API key is not configured")
-            return {"stops": fallback, "used_ai": False}
+            return self._result(fallback, candidates, body, used_ai=False)
         if not candidates:
             logger.warning("OpenRouter recommendation fallback: no matching candidates")
-            return {"stops": fallback, "used_ai": False}
+            return self._result(fallback, candidates, body, used_ai=False)
         weather = None
         located = next((item for item in candidates if item.latitude and item.longitude), None)
         if located:
@@ -70,6 +99,7 @@ class RecommendationService:
                 "region": item.region,
                 "sport": item.sport_name,
                 "minutes": self._minutes(item),
+                "matchScore": self._match_score([item.id], candidates, body),
             }
             for item in candidates
         ]
@@ -153,10 +183,10 @@ class RecommendationService:
                 )
             if not stops:
                 raise ValueError
-            return {"stops": stops, "used_ai": True}
+            return self._result(stops, candidates, body, used_ai=True)
         except (httpx.HTTPError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
             logger.warning("OpenRouter recommendation fallback: %s", error, exc_info=True)
-            return {"stops": fallback, "used_ai": False}
+            return self._result(fallback, candidates, body, used_ai=False)
 
 
 def get_recommendation_service(
