@@ -203,7 +203,6 @@ class RecommendationService:
         except (httpx.HTTPError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
             logger.warning("OpenRouter recommendation fallback: %s", error, exc_info=True)
             return self._result(fallback, candidates, body, used_ai=False)
-
     async def generate_mission(self, body) -> dict:
         result = await self.recommend(body, require_stamp=True)
         if not result["stops"] or self.course_repository is None:
