@@ -14,6 +14,7 @@ from .routes.collected_badge import router as collected_badges_router
 from .routes.collected_stamp import router as collected_stamps_router
 from .routes.course import router as courses_router
 from .routes.passport import router as passports_router
+from .routes.recommendation import admin_router as admin_missions_router
 from .routes.recommendation import router as recommendations_router
 from .routes.stamp_submission import router as stamp_submissions_router
 from .routes.stamp_catalog import router as stamp_catalog_router
@@ -78,6 +79,7 @@ for router in (
     stamp_catalog_router,
     stampbook_router,
     recommendations_router,
+    admin_missions_router,
     weather_router,
 ):
     app.include_router(router)

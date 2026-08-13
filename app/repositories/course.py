@@ -1,7 +1,7 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Activity, Course, CourseStamp, Stamp
+from app.models import Activity, ActivityCategory, Course, CourseStamp, Stamp
 from app.repositories.base import CrudRepository, dumped
 
 
@@ -15,6 +15,42 @@ class CourseRepository(CrudRepository):
         if values.get("representative_image_url") is not None:
             values["representative_image_url"] = str(values["representative_image_url"])
         return values
+
+    async def create_generated_mission(self, body, stops) -> Course | None:
+        activity_ids = [stop["activity_id"] for stop in stops]
+        stamp_rows = (
+            await self.session.execute(
+                select(Stamp.activity_id, func.min(Stamp.id).label("stamp_id"))
+                .where(Stamp.activity_id.in_(activity_ids))
+                .group_by(Stamp.activity_id)
+            )
+        ).all()
+        stamp_ids = dict(stamp_rows)
+        if len(stamp_ids) != len(activity_ids):
+            return None
+
+        course = Course(
+            category=ActivityCategory.sports if body.sport else ActivityCategory.tour,
+            sport_name=body.sport,
+            theme=body.theme,
+            title=body.title,
+            description=body.description,
+            estimated_duration_minutes=sum(stop["estimated_minutes"] for stop in stops),
+            is_published=False,
+        )
+        self.session.add(course)
+        await self.session.flush()
+        for position, stop in enumerate(stops, start=1):
+            self.session.add(
+                CourseStamp(
+                    course_id=course.id,
+                    stamp_id=stamp_ids[stop["activity_id"]],
+                    position=position,
+                )
+            )
+        await self.session.flush()
+        await self.session.refresh(course)
+        return course
 
     async def itinerary(self, course_id: int):
         rows = await self.session.execute(
