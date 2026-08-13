@@ -54,3 +54,28 @@ class CourseResponse(TimestampedResponse):
     title: str | None = None
     description: str | None = None
     is_published: bool = Field(default=False, serialization_alias="isPublished")
+
+
+class CourseItineraryStop(Dto):
+    position: int = Field(ge=0)
+    stamp_id: int = Field(gt=0, serialization_alias="stampId")
+    activity_id: int = Field(gt=0, serialization_alias="activityId")
+    category: ActivityCategory
+    place_name: str | None = Field(serialization_alias="placeName")
+    sport_name: str | None = Field(serialization_alias="sportName")
+    address: str | None
+    latitude: float | None
+    longitude: float | None
+    estimated_minutes: int = Field(gt=0, serialization_alias="estimatedMinutes")
+
+
+class CourseItineraryResponse(Dto):
+    id: int = Field(gt=0)
+    title: str | None
+    description: str | None
+    category: ActivityCategory
+    sport_name: str | None = Field(serialization_alias="sportName")
+    theme: CourseTheme
+    recommended_companion: str | None = Field(serialization_alias="recommendedCompanion")
+    estimated_duration_minutes: int = Field(ge=0, serialization_alias="estimatedDurationMinutes")
+    stops: list[CourseItineraryStop]
