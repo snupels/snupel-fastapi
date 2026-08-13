@@ -17,7 +17,7 @@ from app.services.weather import WeatherService, get_weather_service
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_LEG_KM = 40
 AVERAGE_KPH = 40
-MAX_AI_CANDIDATES = 15
+MAX_AI_CANDIDATES = 10
 WEATHER_TIMEOUT_SECONDS = 2
 AI_TIMEOUT_SECONDS = 12
 CATEGORY_MINUTES = {"tour": 45, "sports": 90, "event": 60}
@@ -128,14 +128,20 @@ class RecommendationService:
         category = getattr(activity.category, "value", activity.category)
         if theme == "thrill" and category == "sports":
             return 1
-        text = " ".join(
-            filter(
-                None, (activity.place_name, activity.summary, getattr(activity, "address", None))
-            )
-        ).lower()
+        text = " ".join(filter(None, (activity.place_name, activity.summary))).lower()
         return int(any(keyword in text for keyword in THEME_KEYWORDS[theme]))
 
+    @staticmethod
+    def _recommendable(activity) -> bool:
+        content_type = str((activity.source_metadata or {}).get("contenttypeid") or "")
+        return content_type != "32" and not (
+            content_type == "15"
+            and getattr(activity, "starts_at", None) is None
+            and getattr(activity, "ends_at", None) is None
+        )
+
     def _coherent_candidates(self, candidates, body):
+        candidates = [item for item in candidates if self._recommendable(item)]
         if not candidates:
             return []
         anchors = [
@@ -337,7 +343,7 @@ class RecommendationService:
                 "category": item.category.value,
                 "sigun": item.sigun,
                 "sport": item.sport_name,
-                "summary": (item.summary or "")[:300],
+                "summary": (item.summary or "")[:160],
                 "minutes": self._minutes(item),
                 "distanceFromAnchorKm": round(self._distance_km(anchor, item) or 0, 1),
                 "matchScore": self._match_score(
@@ -355,6 +361,7 @@ class RecommendationService:
         ]
         payload = {
             "model": os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3.1"),
+            "max_tokens": 600,
             "messages": [
                 {
                     "role": "system",
@@ -407,7 +414,11 @@ class RecommendationService:
                     },
                 },
             },
-            "provider": {"data_collection": "deny", "require_parameters": True},
+            "provider": {
+                "data_collection": "deny",
+                "require_parameters": True,
+                "sort": "latency",
+            },
         }
         try:
             async with asyncio.timeout(AI_TIMEOUT_SECONDS):

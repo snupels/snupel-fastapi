@@ -593,6 +593,8 @@ def test_recommendation_uses_only_safe_candidates_and_validates_ai(monkeypatch, 
     assert "속초시" in prompt and "설악산의 대표 등산 코스" in prompt
     assert '"matchScore": 96' in prompt
     assert captured["provider"]["data_collection"] == "deny"
+    assert captured["provider"]["sort"] == "latency"
+    assert captured["max_tokens"] == 600
     Response.invalid = True
     fallback = asyncio.run(RecommendationService(Repository(), Weather()).recommend(body))
     assert fallback["used_ai"] is False
@@ -675,7 +677,7 @@ def test_recommendation_keeps_stops_close_and_counts_travel(monkeypatch):
 
 
 def test_recommendation_fallback_filters_weak_theme_matches(monkeypatch):
-    def activity(item_id, name, latitude):
+    def activity(item_id, name, latitude, metadata=None):
         return SimpleNamespace(
             id=item_id,
             place_name=name,
@@ -685,7 +687,9 @@ def test_recommendation_fallback_filters_weak_theme_matches(monkeypatch):
             sport_name=None,
             summary=None,
             address=None,
-            source_metadata=None,
+            source_metadata=metadata,
+            starts_at=None,
+            ends_at=None,
             latitude=latitude,
             longitude=129.1,
             recommendation_theme_match=False,
@@ -695,7 +699,8 @@ def test_recommendation_fallback_filters_weak_theme_matches(monkeypatch):
     candidates = [
         activity(1, "노봉해변", 37.58),
         activity(2, "도직해변", 37.59),
-        activity(3, "더뷰티호텔", 37.60),
+        activity(3, "바다호텔", 37.60, {"contenttypeid": "32"}),
+        activity(4, "해변 해맞이 행사", 37.61, {"contenttypeid": "15"}),
     ]
 
     class Repository:
