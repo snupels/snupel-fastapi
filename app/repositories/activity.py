@@ -161,9 +161,6 @@ class ActivityRepository(CrudRepository):
     async def recommendation_candidates(
         self, region: str, sport: str | None, theme: str, limit: int = 30
     ):
-        query = select(Activity).where(self._available(), Activity.region == region)
-        if sport:
-            query = query.where(Activity.sport_name == sport)
         theme_match = exists().where(
             Stamp.activity_id == Activity.id,
             CourseStamp.stamp_id == Stamp.id,
@@ -171,11 +168,19 @@ class ActivityRepository(CrudRepository):
             Course.is_published.is_(True),
             Course.theme == theme,
         )
-        return list(
-            await self.session.scalars(
+        query = select(Activity, theme_match.label("theme_match")).where(
+            self._available(), Activity.region == region
+        )
+        if sport:
+            query = query.where(Activity.sport_name == sport)
+        rows = (
+            await self.session.execute(
                 query.order_by(theme_match.desc(), Activity.id).limit(limit)
             )
-        )
+        ).all()
+        for activity, matches_theme in rows:
+            activity.recommendation_theme_match = matches_theme
+        return [activity for activity, _ in rows]
 
     async def sync_source(self, source: str, items: list[dict], synced_at: datetime) -> int:
         existing = {
