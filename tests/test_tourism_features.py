@@ -625,6 +625,95 @@ def test_recommendation_keeps_stops_close_and_counts_travel(monkeypatch):
     assert result["used_ai"] is False
 
 
+def test_recommendation_fallback_filters_weak_theme_matches(monkeypatch):
+    def activity(item_id, name, latitude):
+        return SimpleNamespace(
+            id=item_id,
+            place_name=name,
+            category=ActivityCategory.tour,
+            region="강원특별자치도",
+            sigun="동해시",
+            sport_name=None,
+            summary=None,
+            address=None,
+            source_metadata=None,
+            latitude=latitude,
+            longitude=129.1,
+            recommendation_theme_match=False,
+            recommendation_sport_match=True,
+        )
+
+    candidates = [
+        activity(1, "노봉해변", 37.58),
+        activity(2, "도직해변", 37.59),
+        activity(3, "더뷰티호텔", 37.60),
+    ]
+
+    class Repository:
+        async def recommendation_candidates(self, *_, **__):
+            return candidates
+
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    body = CourseRecommendationRequest(
+        theme=CourseTheme.photo_spot,
+        region="강원특별자치도",
+        availableMinutes=180,
+    )
+    result = asyncio.run(RecommendationService(Repository(), object()).recommend(body))
+
+    assert [stop["activity_id"] for stop in result["stops"]] == [1, 2]
+
+
+def test_recommendation_external_timeouts_use_fallback(monkeypatch):
+    candidate = SimpleNamespace(
+        id=1,
+        place_name="노봉해변",
+        category=ActivityCategory.tour,
+        region="강원특별자치도",
+        sigun="동해시",
+        sport_name=None,
+        summary=None,
+        address=None,
+        source_metadata=None,
+        latitude=37.58,
+        longitude=129.1,
+        recommendation_theme_match=False,
+        recommendation_sport_match=True,
+    )
+
+    class Repository:
+        async def recommendation_candidates(self, *_, **__):
+            return [candidate]
+
+    class Weather:
+        async def forecast(self, *_):
+            await asyncio.sleep(1)
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            pass
+
+        async def post(self, *_args, **_kwargs):
+            await asyncio.sleep(1)
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "secret")
+    monkeypatch.setattr("app.services.recommendation.WEATHER_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr("app.services.recommendation.AI_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr("app.services.recommendation.httpx.AsyncClient", lambda **_: Client())
+    body = CourseRecommendationRequest(
+        theme=CourseTheme.photo_spot,
+        region="강원특별자치도",
+        availableMinutes=120,
+    )
+    result = asyncio.run(RecommendationService(Repository(), Weather()).recommend(body))
+
+    assert result["used_ai"] is False
+    assert result["stops"][0]["activity_id"] == 1
+
+
 def test_admin_mission_generation_persists_a_reviewable_draft():
     course = SimpleNamespace(id=9, is_published=False)
 
