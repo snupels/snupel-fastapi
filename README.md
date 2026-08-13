@@ -42,7 +42,7 @@ uv run uvicorn app.main:app --reload --port 8000
 | `ADMIN_EMAILS` | 관리자 이메일 목록(쉼표 구분) |
 | `AUTH_ALLOWED_REDIRECT_URIS` | OAuth 로그인 후 허용할 리디렉션 URI |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google OAuth 설정 |
-| `KAKAO_CLIENT_ID`, `KAKAO_CLIENT_SECRET` | Kakao OAuth 설정 |
+| `KAKAO_CLIENT_ID`, `KAKAO_CLIENT_SECRET` | Kakao OAuth 설정 (`KAKAO_CLIENT_ID`는 관광 데이터 주소·좌표 보완에도 사용) |
 | `MAIL_*` | 관리자 로그인 인증 코드를 발송할 SMTP 설정 |
 | `DATA_GO_KR_SERVICE_KEY` | 공공데이터포털 관광 정보 API의 디코딩 인증키 |
 | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | 맞춤 코스 추천 모델 설정 |

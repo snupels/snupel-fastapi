@@ -1,6 +1,7 @@
 import asyncio
 import json
 from datetime import datetime
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
@@ -284,6 +285,54 @@ def test_tourism_sync_requests_durunubi_json():
 
     asyncio.run(Sync(None, Repository(), "key").run())
     assert next(params for url, params in calls if "Durunubi" in url)["_type"] == "json"
+
+
+def test_tourism_sync_fills_only_one_missing_location_value(monkeypatch):
+    calls = []
+
+    class Response:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self.payload
+
+    class Client:
+        async def get(self, url, **kwargs):
+            calls.append((url, kwargs))
+            if "coord2address" in url:
+                return Response(
+                    {"documents": [{"road_address": {"address_name": "강원특별자치도 강릉시"}}]}
+                )
+            return Response({"documents": [{"x": "128.876", "y": "37.751"}]})
+
+    monkeypatch.setenv("KAKAO_CLIENT_ID", "key")
+    rows = [
+        {"address": "강원특별자치도 양양군", "latitude": None, "longitude": None},
+        {"address": None, "latitude": 37.7, "longitude": 128.8},
+        {"address": None, "latitude": None, "longitude": None},
+        {"address": "강원특별자치도 속초시", "latitude": 38.2, "longitude": 128.6},
+        {"address": None, "latitude": 38.1, "longitude": None},
+    ]
+
+    result = asyncio.run(TourismSync(Client(), None, "key")._fill_locations(rows))
+
+    assert (result[0]["latitude"], result[0]["longitude"]) == (
+        Decimal("37.751"),
+        Decimal("128.876"),
+    )
+    assert result[1]["address"] == "강원특별자치도 강릉시"
+    assert result[2] == {"address": None, "latitude": None, "longitude": None}
+    assert result[3] == {
+        "address": "강원특별자치도 속초시",
+        "latitude": 38.2,
+        "longitude": 128.6,
+    }
+    assert result[4] == {"address": None, "latitude": 38.1, "longitude": None}
+    assert len(calls) == 2
 
 
 def test_sports_dedup_keeps_one_preferred_source_per_place_and_area():
