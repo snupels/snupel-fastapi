@@ -1,9 +1,10 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Index, UniqueConstraint, func, select
 from sqlalchemy.dialects.mysql import BIGINT
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, column_property, mapped_column
 
+from .activity import Stamp
 from .base import Base
 
 
@@ -20,6 +21,12 @@ class CollectedStamp(Base):
     )
     stamp_id: Mapped[int] = mapped_column(
         BIGINT(unsigned=True), ForeignKey("stamps.id", ondelete="CASCADE")
+    )
+    activity_id: Mapped[int] = column_property(
+        select(Stamp.activity_id)
+        .where(Stamp.id == stamp_id)
+        .correlate_except(Stamp)
+        .scalar_subquery()
     )
     collected_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
 
