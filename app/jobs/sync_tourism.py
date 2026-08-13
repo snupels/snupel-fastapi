@@ -23,6 +23,8 @@ SKI_GOLF_DATA_URL = "https://www.data.go.kr/data/3045451/fileData.do"
 MARINE_DATA_URL = "https://www.data.go.kr/data/3045471/fileData.do"
 MARINE_FACILITY_DATA_URL = "https://www.data.go.kr/data/15111483/fileData.do"
 OXYGEN_ROAD_DATA_URL = "https://www.data.go.kr/data/3045500/fileData.do"
+KAKAO_ADDRESS_URL = "https://dapi.kakao.com/v2/local/search/address.json"
+KAKAO_COORD_TO_ADDRESS_URL = "https://dapi.kakao.com/v2/local/geo/coord2address.json"
 LEPORTS_CONTENT_TYPE = "28"
 EXCLUDED_LEPORTS_CODES = {"A03021700"}
 EXCLUDED_LEPORTS_KEYWORDS = (
@@ -466,6 +468,41 @@ class TourismSync:
             content = file_response.content.decode("cp949")
         return list(csv.DictReader(io.StringIO(content)))
 
+    async def _fill_locations(self, rows: list[dict]) -> list[dict]:
+        kakao_key = os.getenv("KAKAO_CLIENT_ID")
+        if not kakao_key:
+            return rows
+        headers = {"Authorization": f"KakaoAK {kakao_key}"}
+        for row in rows:
+            address = str(row.get("address") or "").strip()
+            has_coordinates = row.get("latitude") is not None and row.get("longitude") is not None
+            if bool(address) == has_coordinates:
+                continue
+            try:
+                if address:
+                    response = await self.client.get(
+                        KAKAO_ADDRESS_URL, params={"query": address}, headers=headers
+                    )
+                    response.raise_for_status()
+                    document = response.json().get("documents", [])[0]
+                    latitude, longitude = number(document.get("y")), number(document.get("x"))
+                    if latitude is not None and longitude is not None:
+                        row["latitude"], row["longitude"] = latitude, longitude
+                elif has_coordinates:
+                    response = await self.client.get(
+                        KAKAO_COORD_TO_ADDRESS_URL,
+                        params={"x": row["longitude"], "y": row["latitude"]},
+                        headers=headers,
+                    )
+                    response.raise_for_status()
+                    document = response.json().get("documents", [])[0]
+                    location = document.get("road_address") or document.get("address") or {}
+                    if location.get("address_name"):
+                        row["address"] = location["address_name"]
+            except (httpx.HTTPError, AttributeError, IndexError, TypeError, ValueError):
+                continue
+        return rows
+
     async def run(self) -> dict[str, int]:
         common = {"MobileOS": "ETC", "MobileApp": "Snupel", "_type": "json"}
         codes = await self._pages(f"{KOR_BASE}/areaCode2", common)
@@ -495,36 +532,25 @@ class TourismSync:
             if "해양레저" in str(row.get("업종") or "")
         ]
         oxygen_roads = await self._file_rows(OXYGEN_ROAD_DATA_URL)
+        source_rows = {
+            "tourapi": [tourism_item(row) for row in places]
+            + [tourism_item(row, "event") for row in festivals],
+            "durunubi": [durunubi_item(row) for row in trails],
+            "mountain100": [mountain_item(row) for row in mountains],
+            "gangwon_ski_golf": [ski_golf_item(row) for row in ski_golf],
+            "gangwon_marine": [marine_item(row) for row in marine],
+            "gangwon_marine_facility": [
+                marine_facility_item(row) for row in marine_facilities
+            ],
+            "gangwon_oxygen_road": [oxygen_road_item(row) for row in oxygen_roads],
+        }
+        for rows in source_rows.values():
+            await self._fill_locations(rows)
+
         synced_at = datetime.now()
         result = {}
-        result["tourapi"] = await self.repository.sync_source(
-            "tourapi",
-            [tourism_item(row) for row in places]
-            + [tourism_item(row, "event") for row in festivals],
-            synced_at,
-        )
-        result["durunubi"] = await self.repository.sync_source(
-            "durunubi", [durunubi_item(row) for row in trails], synced_at
-        )
-        result["mountain100"] = await self.repository.sync_source(
-            "mountain100", [mountain_item(row) for row in mountains], synced_at
-        )
-        result["gangwon_ski_golf"] = await self.repository.sync_source(
-            "gangwon_ski_golf", [ski_golf_item(row) for row in ski_golf], synced_at
-        )
-        result["gangwon_marine"] = await self.repository.sync_source(
-            "gangwon_marine", [marine_item(row) for row in marine], synced_at
-        )
-        result["gangwon_marine_facility"] = await self.repository.sync_source(
-            "gangwon_marine_facility",
-            [marine_facility_item(row) for row in marine_facilities],
-            synced_at,
-        )
-        result["gangwon_oxygen_road"] = await self.repository.sync_source(
-            "gangwon_oxygen_road",
-            [oxygen_road_item(row) for row in oxygen_roads],
-            synced_at,
-        )
+        for source, rows in source_rows.items():
+            result[source] = await self.repository.sync_source(source, rows, synced_at)
         candidates, protected_ids = await self.repository.sports_dedup_candidates()
         duplicate_ids = duplicate_activity_ids(candidates, protected_ids)
         result["duplicates_deactivated"] = (
