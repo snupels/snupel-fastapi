@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import math
@@ -17,12 +18,59 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_LEG_KM = 40
 AVERAGE_KPH = 40
 MAX_AI_CANDIDATES = 15
+WEATHER_TIMEOUT_SECONDS = 2
+AI_TIMEOUT_SECONDS = 12
 CATEGORY_MINUTES = {"tour": 45, "sports": 90, "event": 60}
 THEME_LABELS = {
     "healing": "힐링",
     "thrill": "스릴",
     "photo_spot": "포토스팟",
     "stamp": "스탬프",
+}
+THEME_KEYWORDS = {
+    "healing": (
+        "해변",
+        "공원",
+        "숲",
+        "산책",
+        "명상",
+        "휴양",
+        "수목원",
+        "호수",
+        "정자",
+        "카페",
+        "계곡",
+    ),
+    "thrill": (
+        "카누",
+        "카약",
+        "래프팅",
+        "서핑",
+        "스키",
+        "산악",
+        "등산",
+        "레저",
+        "패러",
+        "짚",
+        "클라이밍",
+    ),
+    "photo_spot": (
+        "해변",
+        "전망",
+        "공원",
+        "산",
+        "길",
+        "마을",
+        "정자",
+        "폭포",
+        "호수",
+        "계곡",
+        "숲",
+        "정원",
+        "바다",
+        "섬",
+    ),
+    "stamp": ("스탬프", "도장"),
 }
 logger = logging.getLogger(__name__)
 
@@ -73,6 +121,20 @@ class RecommendationService:
             return None
         return 0 if not distance else max(10, math.ceil(distance / AVERAGE_KPH * 60))
 
+    @staticmethod
+    def _theme_relevance(activity, theme: str) -> int:
+        if bool(getattr(activity, "recommendation_theme_match", False)):
+            return 2
+        category = getattr(activity.category, "value", activity.category)
+        if theme == "thrill" and category == "sports":
+            return 1
+        text = " ".join(
+            filter(
+                None, (activity.place_name, activity.summary, getattr(activity, "address", None))
+            )
+        ).lower()
+        return int(any(keyword in text for keyword in THEME_KEYWORDS[theme]))
+
     def _coherent_candidates(self, candidates, body):
         if not candidates:
             return []
@@ -96,10 +158,7 @@ class RecommendationService:
             key=lambda pair: (
                 len(cluster(pair[1]))
                 + 2
-                * sum(
-                    bool(getattr(item, "recommendation_theme_match", False))
-                    for item in cluster(pair[1])
-                ),
+                * sum(self._theme_relevance(item, body.theme.value) for item in cluster(pair[1])),
                 -pair[0],
             ),
         )
@@ -107,7 +166,7 @@ class RecommendationService:
         nearby.sort(
             key=lambda item: (
                 item.id != anchor.id,
-                not bool(getattr(item, "recommendation_theme_match", False)),
+                -self._theme_relevance(item, body.theme.value),
                 self._distance_km(anchor, item) or 0,
                 item.id,
             )
@@ -121,10 +180,14 @@ class RecommendationService:
     def _fallback(self, candidates, body) -> list[dict]:
         if not candidates:
             return []
-        remaining = list(candidates)
+        relevant = [item for item in candidates if self._theme_relevance(item, body.theme.value)]
+        remaining = list(candidates) if body.sport else relevant or list(candidates)
         first = next(
             (item for item in remaining if body.sport and item.sport_name == body.sport),
-            remaining[0],
+            max(
+                remaining,
+                key=lambda item: self._theme_relevance(item, body.theme.value),
+            ),
         )
         ordered, previous = [first], first
         remaining.remove(first)
@@ -137,7 +200,7 @@ class RecommendationService:
             previous = min(
                 reachable,
                 key=lambda item: (
-                    not bool(getattr(item, "recommendation_theme_match", False)),
+                    -self._theme_relevance(item, body.theme.value),
                     self._distance_km(previous, item) or 0,
                     item.id,
                 ),
@@ -209,7 +272,7 @@ class RecommendationService:
         ) / len(selected)
         sport = 1 if body.sport is None else any(item.sport_name == body.sport for item in selected)
         theme = sum(
-            bool(getattr(activity, "recommendation_theme_match", False)) for activity in selected
+            min(self._theme_relevance(activity, body.theme.value), 1) for activity in selected
         ) / len(selected)
         time_fit = min(
             sum(stop["estimated_minutes"] for stop in stops) / body.available_minutes,
@@ -260,9 +323,10 @@ class RecommendationService:
         weather = None
         if located:
             try:
-                weather = await self.weather.forecast(
-                    float(located.latitude), float(located.longitude)
-                )
+                async with asyncio.timeout(WEATHER_TIMEOUT_SECONDS):
+                    weather = await self.weather.forecast(
+                        float(located.latitude), float(located.longitude)
+                    )
             except Exception:
                 weather = None
         anchor = candidates[0]
@@ -346,17 +410,27 @@ class RecommendationService:
             "provider": {"data_collection": "deny", "require_parameters": True},
         }
         try:
-            async with httpx.AsyncClient(timeout=20) as client:
-                response = await client.post(
-                    OPENROUTER_URL,
-                    headers={"Authorization": f"Bearer {api_key}"},
-                    json=payload,
-                )
-                response.raise_for_status()
-                generated = json.loads(response.json()["choices"][0]["message"]["content"])["stops"]
+            async with asyncio.timeout(AI_TIMEOUT_SECONDS):
+                async with httpx.AsyncClient(timeout=AI_TIMEOUT_SECONDS) as client:
+                    response = await client.post(
+                        OPENROUTER_URL,
+                        headers={"Authorization": f"Bearer {api_key}"},
+                        json=payload,
+                    )
+                    response.raise_for_status()
+                    generated = json.loads(response.json()["choices"][0]["message"]["content"])[
+                        "stops"
+                    ]
             stops = self._ai_stops(generated, candidates, body)
             return self._result(stops, candidates, body, used_ai=True)
-        except (httpx.HTTPError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        except (
+            TimeoutError,
+            httpx.HTTPError,
+            KeyError,
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+        ) as error:
             logger.warning("OpenRouter recommendation fallback: %s", error, exc_info=True)
             return self._result(fallback, candidates, body, used_ai=False)
 
