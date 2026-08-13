@@ -20,6 +20,8 @@ AVERAGE_KPH = 40
 MAX_AI_CANDIDATES = 10
 WEATHER_TIMEOUT_SECONDS = 2
 AI_TIMEOUT_SECONDS = 12
+DEFAULT_AI_MODEL = "deepseek/deepseek-chat-v3.1"
+DEFAULT_AI_FALLBACK_MODEL = "google/gemma-4-26b-a4b-it:free"
 CATEGORY_MINUTES = {"tour": 45, "sports": 90, "event": 60}
 THEME_LABELS = {
     "healing": "힐링",
@@ -359,8 +361,16 @@ class RecommendationService:
             }
             for item in candidates
         ]
+        models = list(
+            dict.fromkeys(
+                (
+                    os.getenv("OPENROUTER_MODEL", DEFAULT_AI_MODEL),
+                    os.getenv("OPENROUTER_FALLBACK_MODEL", DEFAULT_AI_FALLBACK_MODEL),
+                )
+            )
+        )
         payload = {
-            "model": os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3.1"),
+            "models": models,
             "max_tokens": 600,
             "messages": [
                 {
@@ -417,7 +427,7 @@ class RecommendationService:
             "provider": {
                 "data_collection": "deny",
                 "require_parameters": True,
-                "sort": "latency",
+                "sort": {"by": "latency", "partition": "none"},
             },
         }
         try:

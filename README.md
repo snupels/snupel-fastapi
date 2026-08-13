@@ -45,7 +45,7 @@ uv run uvicorn app.main:app --reload --port 8000
 | `KAKAO_CLIENT_ID`, `KAKAO_CLIENT_SECRET` | Kakao OAuth 설정 (`KAKAO_CLIENT_ID`는 관광 데이터 주소·좌표 보완에도 사용) |
 | `MAIL_*` | 관리자 로그인 인증 코드를 발송할 SMTP 설정 |
 | `DATA_GO_KR_SERVICE_KEY` | 공공데이터포털 관광 정보 API의 디코딩 인증키 |
-| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | 맞춤 코스 추천 모델 설정 |
+| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_FALLBACK_MODEL` | 맞춤 코스 추천 모델과 자동 대체 모델 설정 |
 | `S3_*`, `STAMP_IMAGE_BASE_URL` | 스탬프 인증 사진을 위한 S3 호환 저장소 설정 |
 
 `MAIL_HOST`와 `MAIL_PORT`의 기본값은 각각 `smtp.daum.net`, `465`입니다. 관리자 화면은 `ADMIN_EMAILS`에 등록된 계정의 비밀번호와 이메일 인증 코드로 로그인합니다.

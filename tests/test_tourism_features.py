@@ -593,7 +593,11 @@ def test_recommendation_uses_only_safe_candidates_and_validates_ai(monkeypatch, 
     assert "속초시" in prompt and "설악산의 대표 등산 코스" in prompt
     assert '"matchScore": 96' in prompt
     assert captured["provider"]["data_collection"] == "deny"
-    assert captured["provider"]["sort"] == "latency"
+    assert captured["provider"]["sort"] == {"by": "latency", "partition": "none"}
+    assert captured["models"] == [
+        "deepseek/deepseek-chat-v3.1",
+        "google/gemma-4-26b-a4b-it:free",
+    ]
     assert captured["max_tokens"] == 600
     Response.invalid = True
     fallback = asyncio.run(RecommendationService(Repository(), Weather()).recommend(body))
