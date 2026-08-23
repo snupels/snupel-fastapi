@@ -21,6 +21,7 @@ AVERAGE_KPH = 40
 ROAD_DISTANCE_FACTOR = 1.3
 MAX_COHERENT_CANDIDATES = 30
 MAX_AI_CANDIDATES = 10
+MIN_THEME_CANDIDATES = 3
 WEATHER_TIMEOUT_SECONDS = 2
 AI_TIMEOUT_SECONDS = 12
 DEFAULT_AI_MODEL = "deepseek/deepseek-chat-v3.1"
@@ -187,8 +188,24 @@ class RecommendationService:
         if len(nearby) <= MAX_AI_CANDIDATES:
             return nearby
 
-        selected = [anchor] if body.sport else []
-        pool = [item for item in nearby if item.id != anchor.id or not body.sport]
+        selected = [anchor]
+        theme_pool = [
+            item
+            for item in nearby
+            if item.id != anchor.id and self._theme_relevance(item, body.theme.value)
+        ]
+        theme_target = min(
+            MIN_THEME_CANDIDATES,
+            len(theme_pool) + int(bool(self._theme_relevance(anchor, body.theme.value))),
+        )
+        while sum(bool(self._theme_relevance(item, body.theme.value)) for item in selected) < theme_target:
+            weights = [1 + 2 * self._theme_relevance(item, body.theme.value) for item in theme_pool]
+            choice = random.choices(theme_pool, weights=weights, k=1)[0]
+            selected.append(choice)
+            theme_pool.remove(choice)
+
+        selected_ids = {item.id for item in selected}
+        pool = [item for item in nearby if item.id not in selected_ids]
         while len(selected) < MAX_AI_CANDIDATES:
             weights = [1 + 2 * self._theme_relevance(item, body.theme.value) for item in pool]
             choice = random.choices(pool, weights=weights, k=1)[0]

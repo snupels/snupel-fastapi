@@ -697,13 +697,13 @@ def test_recommendation_randomly_samples_a_weighted_candidate_pool(monkeypatch):
             region="강원특별자치도",
             sigun="강릉시",
             sport_name=None,
-            summary="해변" if item_id == 1 else None,
+            summary="해변" if item_id in {3, 4} else None,
             source_metadata=None,
             starts_at=None,
             ends_at=None,
             latitude=37.75 + item_id / 1000,
             longitude=128.9,
-            recommendation_theme_match=item_id == 1,
+            recommendation_theme_match=item_id in {1, 2},
         )
         for item_id in range(1, 13)
     ]
@@ -723,9 +723,9 @@ def test_recommendation_randomly_samples_a_weighted_candidate_pool(monkeypatch):
 
     selected = RecommendationService(object(), object())._coherent_candidates(candidates, body)
 
-    assert [item.id for item in selected] == list(range(3, 13))
-    assert len(seen_weights) == 10
-    assert seen_weights[0][0] > seen_weights[0][1]
+    assert [item.id for item in selected] == [1, 3, 4, *range(6, 13)]
+    assert len(seen_weights) == 9
+    assert seen_weights[1][0] > seen_weights[1][1]
 
 
 def test_recommendation_applies_road_distance_factor():
