@@ -135,7 +135,8 @@ def test_health_and_openapi():
 
 def test_course_recommendations_are_available_to_logged_in_users():
     class RecommendationService:
-        async def recommend(self, _body):
+        async def recommend(self, _body, *, user_id):
+            assert user_id == 7
             return {"stops": [], "used_ai": False, "match_score": 0}
 
     app.dependency_overrides[get_recommendation_service] = RecommendationService

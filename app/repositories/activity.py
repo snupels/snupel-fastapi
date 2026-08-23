@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import and_, exists, func, literal, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Activity, Course, CourseStamp, Stamp
+from app.models import Activity, CollectedStamp, Course, CourseStamp, Passport, Stamp
 from app.models import ActivityCategory
 from app.repositories.base import CrudRepository, dumped
 
@@ -167,6 +167,7 @@ class ActivityRepository(CrudRepository):
         limit: int = 60,
         *,
         require_stamp: bool = False,
+        user_id: int | None = None,
     ):
         theme_match = exists().where(
             Stamp.activity_id == Activity.id,
@@ -185,6 +186,18 @@ class ActivityRepository(CrudRepository):
             query = query.where(Activity.sigun == sigun)
         if require_stamp:
             query = query.where(exists().where(Stamp.activity_id == Activity.id))
+        if user_id is not None:
+            visited = (
+                exists()
+                .where(
+                    Passport.user_id == user_id,
+                    CollectedStamp.passport_id == Passport.id,
+                    CollectedStamp.stamp_id == Stamp.id,
+                    Stamp.activity_id == Activity.id,
+                )
+                .correlate(Activity)
+            )
+            query = query.where(~visited)
         ordering = [theme_match.desc(), Activity.id]
         if sport:
             ordering.insert(0, sport_match.desc())

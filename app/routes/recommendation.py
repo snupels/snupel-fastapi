@@ -24,7 +24,7 @@ async def recommend(
 ):
     if not rate_limiter.allow(str(actor.id)):
         raise ApiError(429, "rate_limited", "Too many requests.")
-    return await service.recommend(body)
+    return await service.recommend(body, user_id=actor.id)
 
 
 @admin_router.post(

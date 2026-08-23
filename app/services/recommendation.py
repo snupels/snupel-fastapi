@@ -3,6 +3,7 @@ import json
 import logging
 import math
 import os
+import random
 
 import httpx
 from fastapi import Depends
@@ -17,11 +18,13 @@ from app.services.weather import WeatherService, get_weather_service
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_LEG_KM = 40
 AVERAGE_KPH = 40
+ROAD_DISTANCE_FACTOR = 1.3
+MAX_COHERENT_CANDIDATES = 30
 MAX_AI_CANDIDATES = 10
 WEATHER_TIMEOUT_SECONDS = 2
 AI_TIMEOUT_SECONDS = 12
 DEFAULT_AI_MODEL = "deepseek/deepseek-chat-v3.1"
-DEFAULT_AI_FALLBACK_MODEL = "google/gemma-4-26b-a4b-it:free"
+DEFAULT_AI_FALLBACK_MODEL = "deepseek/deepseek-v3.1-terminus"
 CATEGORY_MINUTES = {"tour": 45, "sports": 90, "event": 60}
 THEME_LABELS = {
     "healing": "힐링",
@@ -112,7 +115,8 @@ class RecommendationService:
                 math.sin(delta_lat / 2) ** 2
                 + math.cos(lat1) * math.cos(lat2) * math.sin(delta_lon / 2) ** 2
             )
-            return 6371 * 2 * math.atan2(math.sqrt(value), math.sqrt(1 - value))
+            straight_line_km = 6371 * 2 * math.atan2(math.sqrt(value), math.sqrt(1 - value))
+            return straight_line_km * ROAD_DISTANCE_FACTOR
         if first.sigun and first.sigun == second.sigun:
             return 10
         return None
@@ -179,7 +183,19 @@ class RecommendationService:
                 item.id,
             )
         )
-        return nearby[:MAX_AI_CANDIDATES]
+        nearby = nearby[:MAX_COHERENT_CANDIDATES]
+        if len(nearby) <= MAX_AI_CANDIDATES:
+            return nearby
+
+        selected = [anchor] if body.sport else []
+        pool = [item for item in nearby if item.id != anchor.id or not body.sport]
+        while len(selected) < MAX_AI_CANDIDATES:
+            weights = [1 + 2 * self._theme_relevance(item, body.theme.value) for item in pool]
+            choice = random.choices(pool, weights=weights, k=1)[0]
+            selected.append(choice)
+            pool.remove(choice)
+        selected_ids = {item.id for item in selected}
+        return [item for item in nearby if item.id in selected_ids]
 
     def _segment(self, previous, activity) -> int | None:
         travel = 0 if previous is None else self._travel_minutes(previous, activity)
@@ -303,13 +319,20 @@ class RecommendationService:
             "match_score": self._match_score(stops, candidates, body),
         }
 
-    async def recommend(self, body, *, require_stamp: bool = False) -> dict:
+    async def recommend(
+        self,
+        body,
+        *,
+        require_stamp: bool = False,
+        user_id: int | None = None,
+    ) -> dict:
         candidates = await self.repository.recommendation_candidates(
             body.region,
             body.sigun,
             body.sport,
             body.theme.value,
             require_stamp=require_stamp,
+            user_id=user_id,
         )
         candidates = self._coherent_candidates(candidates, body)
         fallback = self._fallback(candidates, body)
@@ -439,9 +462,10 @@ class RecommendationService:
                         json=payload,
                     )
                     response.raise_for_status()
-                    generated = json.loads(response.json()["choices"][0]["message"]["content"])[
-                        "stops"
-                    ]
+                    content = response.json()["choices"][0]["message"]["content"]
+                    if not isinstance(content, str):
+                        raise ValueError("OpenRouter returned no JSON content")
+                    generated = json.loads(content)["stops"]
             stops = self._ai_stops(generated, candidates, body)
             return self._result(stops, candidates, body, used_ai=True)
         except (

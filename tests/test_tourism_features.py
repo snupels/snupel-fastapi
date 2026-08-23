@@ -596,7 +596,7 @@ def test_recommendation_uses_only_safe_candidates_and_validates_ai(monkeypatch, 
     assert captured["provider"]["sort"] == {"by": "latency", "partition": "none"}
     assert captured["models"] == [
         "deepseek/deepseek-chat-v3.1",
-        "google/gemma-4-26b-a4b-it:free",
+        "deepseek/deepseek-v3.1-terminus",
     ]
     assert captured["max_tokens"] == 600
     Response.invalid = True
@@ -622,7 +622,12 @@ def test_recommendation_candidates_mark_theme_matches():
 
     result = asyncio.run(
         ActivityRepository(Session()).recommendation_candidates(
-            "강원특별자치도", "양양군", "hiking", "healing", require_stamp=True
+            "강원특별자치도",
+            "양양군",
+            "hiking",
+            "healing",
+            require_stamp=True,
+            user_id=7,
         )
     )
     sql = str(
@@ -634,6 +639,9 @@ def test_recommendation_candidates_mark_theme_matches():
     assert candidate.recommendation_sport_match is True
     assert "courses.theme = 'healing'" in sql
     assert "activities.sigun = '양양군'" in sql
+    assert "passports.user_id = 7" in sql
+    assert "collected_stamps" in sql
+    assert "NOT (EXISTS" in sql
     assert sql.count("EXISTS") >= 2
     assert "ORDER BY" in sql and "DESC" in sql
 
@@ -678,6 +686,56 @@ def test_recommendation_keeps_stops_close_and_counts_travel(monkeypatch):
     assert sum(stop["estimated_minutes"] for stop in result["stops"]) <= 180
     assert result["stops"][1]["estimated_minutes"] > 45
     assert result["used_ai"] is False
+
+
+def test_recommendation_randomly_samples_a_weighted_candidate_pool(monkeypatch):
+    candidates = [
+        SimpleNamespace(
+            id=item_id,
+            place_name=f"장소 {item_id}",
+            category=ActivityCategory.tour,
+            region="강원특별자치도",
+            sigun="강릉시",
+            sport_name=None,
+            summary="해변" if item_id == 1 else None,
+            source_metadata=None,
+            starts_at=None,
+            ends_at=None,
+            latitude=37.75 + item_id / 1000,
+            longitude=128.9,
+            recommendation_theme_match=item_id == 1,
+        )
+        for item_id in range(1, 13)
+    ]
+    seen_weights = []
+
+    def choose_last(pool, *, weights, k):
+        seen_weights.append(weights)
+        assert k == 1
+        return [pool[-1]]
+
+    monkeypatch.setattr("app.services.recommendation.random.choices", choose_last)
+    body = CourseRecommendationRequest(
+        theme=CourseTheme.healing,
+        region="강원특별자치도",
+        availableMinutes=360,
+    )
+
+    selected = RecommendationService(object(), object())._coherent_candidates(candidates, body)
+
+    assert [item.id for item in selected] == list(range(3, 13))
+    assert len(seen_weights) == 10
+    assert seen_weights[0][0] > seen_weights[0][1]
+
+
+def test_recommendation_applies_road_distance_factor():
+    first = SimpleNamespace(id=1, latitude=37.75, longitude=128.9, sigun="강릉시")
+    second = SimpleNamespace(id=2, latitude=38.05, longitude=128.9, sigun="강릉시")
+
+    service = RecommendationService(object(), object())
+
+    assert service._distance_km(first, second) > 40
+    assert service._travel_minutes(first, second) is None
 
 
 def test_recommendation_fallback_filters_weak_theme_matches(monkeypatch):
