@@ -283,17 +283,21 @@ class RecommendationService:
         seen, total, stops, previous = set(), 0, [], None
         for stop in generated:
             item_id = int(stop["activityId"])
-            if item_id not in by_id or item_id in seen:
-                raise ValueError
+            if item_id not in by_id:
+                raise ValueError(f"unknown candidate ID: {item_id}")
+            if item_id in seen:
+                raise ValueError(f"duplicate candidate ID: {item_id}")
             activity = by_id[item_id]
             minutes = self._segment(previous, activity)
             if minutes is None:
-                raise ValueError
+                raise ValueError(
+                    f"unreachable leg: {previous.id if previous else 'start'} -> {item_id}"
+                )
             if total + minutes > body.available_minutes:
                 continue
             reason = str(stop["reason"]).strip()
             if not reason:
-                raise ValueError
+                raise ValueError(f"empty reason for candidate ID: {item_id}")
             stops.append(
                 {
                     "activity_id": item_id,
@@ -308,7 +312,7 @@ class RecommendationService:
             body.sport
             and not any(by_id[stop["activity_id"]].sport_name == body.sport for stop in stops)
         ):
-            raise ValueError
+            raise ValueError("AI course is empty or missing the requested sport")
         return stops
 
     def _match_score(self, stops, candidates, body) -> int:
@@ -386,7 +390,6 @@ class RecommendationService:
                     )
             except Exception:
                 weather = None
-        anchor = candidates[0]
         safe_candidates = [
             {
                 "id": item.id,
@@ -396,7 +399,12 @@ class RecommendationService:
                 "sport": item.sport_name,
                 "summary": (item.summary or "")[:160],
                 "minutes": self._minutes(item),
-                "distanceFromAnchorKm": round(self._distance_km(anchor, item) or 0, 1),
+                "travelMinutesByCandidateId": {
+                    str(other.id): travel
+                    for other in candidates
+                    if other.id != item.id
+                    and (travel := self._travel_minutes(item, other)) is not None
+                },
                 "matchScore": self._match_score(
                     [
                         {
@@ -427,7 +435,9 @@ class RecommendationService:
                     "content": (
                         "Select an ordered, geographically coherent course using only candidate IDs. "
                         "Choose up to five varied stops, include the requested sport when provided, "
-                        "respect the time limit including travel, and write specific reasons in Korean."
+                        "respect the time limit including travel, and write specific reasons in Korean. "
+                        "For every consecutive pair, the next ID must exist in the previous candidate's "
+                        "travelMinutesByCandidateId; add that travel time to candidate minutes."
                     ),
                 },
                 {
