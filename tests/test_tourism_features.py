@@ -593,6 +593,7 @@ def test_recommendation_uses_only_safe_candidates_and_validates_ai(monkeypatch, 
     assert "속초시" in prompt and "설악산의 대표 등산 코스" in prompt
     assert '"matchScore": 96' in prompt
     assert '"travelMinutesByCandidateId": {}' in prompt
+    assert "Choose five varied stops whenever five can fit" in captured["messages"][0]["content"]
     assert captured["provider"]["data_collection"] == "deny"
     assert captured["provider"]["sort"] == {"by": "latency", "partition": "none"}
     assert captured["models"] == [

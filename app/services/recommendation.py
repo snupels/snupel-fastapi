@@ -434,8 +434,9 @@ class RecommendationService:
                     "role": "system",
                     "content": (
                         "Select an ordered, geographically coherent course using only candidate IDs. "
-                        "Choose up to five varied stops, include the requested sport when provided, "
-                        "respect the time limit including travel, and write specific reasons in Korean. "
+                        "Choose five varied stops whenever five can fit; otherwise choose the greatest "
+                        "feasible number. Include the requested sport when provided, respect the time "
+                        "limit including travel, and write specific reasons in Korean. "
                         "For every consecutive pair, the next ID must exist in the previous candidate's "
                         "travelMinutesByCandidateId; add that travel time to candidate minutes."
                     ),
