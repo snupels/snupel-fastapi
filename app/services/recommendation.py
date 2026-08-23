@@ -223,31 +223,40 @@ class RecommendationService:
             return []
         relevant = [item for item in candidates if self._theme_relevance(item, body.theme.value)]
         remaining = list(candidates) if body.sport else relevant or list(candidates)
-        first = next(
-            (item for item in remaining if body.sport and item.sport_name == body.sport),
-            max(
-                remaining,
-                key=lambda item: self._theme_relevance(item, body.theme.value),
+
+        def route(first):
+            ordered, pool, previous = [first], list(remaining), first
+            pool.remove(first)
+            while pool:
+                reachable = [
+                    item for item in pool if self._travel_minutes(previous, item) is not None
+                ]
+                if not reachable:
+                    break
+                previous = min(
+                    reachable,
+                    key=lambda item: (
+                        -self._theme_relevance(item, body.theme.value),
+                        self._distance_km(previous, item) or 0,
+                        item.id,
+                    ),
+                )
+                ordered.append(previous)
+                pool.remove(previous)
+            return ordered
+
+        starts = (
+            [item for item in remaining if item.sport_name == body.sport]
+            if body.sport
+            else remaining
+        )
+        ordered = max(
+            (route(first) for first in starts),
+            key=lambda items: (
+                len(items),
+                sum(self._theme_relevance(item, body.theme.value) for item in items),
             ),
         )
-        ordered, previous = [first], first
-        remaining.remove(first)
-        while remaining:
-            reachable = [
-                item for item in remaining if self._travel_minutes(previous, item) is not None
-            ]
-            if not reachable:
-                break
-            previous = min(
-                reachable,
-                key=lambda item: (
-                    -self._theme_relevance(item, body.theme.value),
-                    self._distance_km(previous, item) or 0,
-                    item.id,
-                ),
-            )
-            ordered.append(previous)
-            remaining.remove(previous)
 
         stops, total, previous = [], 0, None
         theme = THEME_LABELS[body.theme.value]

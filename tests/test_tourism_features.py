@@ -738,6 +738,36 @@ def test_recommendation_applies_road_distance_factor():
     assert service._travel_minutes(first, second) is None
 
 
+def test_recommendation_fallback_tries_each_route_start():
+    def activity(item_id, latitude):
+        return SimpleNamespace(
+            id=item_id,
+            place_name=f"해변 {item_id}",
+            category=ActivityCategory.tour,
+            region="강원특별자치도",
+            sigun="강릉시",
+            sport_name=None,
+            summary="해변",
+            source_metadata=None,
+            latitude=latitude,
+            longitude=128.9,
+            recommendation_theme_match=False,
+        )
+
+    anchor = activity(1, 37.7)
+    south = activity(2, 37.5)
+    north = activity(3, 37.9)
+    body = CourseRecommendationRequest(
+        theme=CourseTheme.healing,
+        region="강원특별자치도",
+        availableMinutes=360,
+    )
+
+    stops = RecommendationService(object(), object())._fallback([anchor, south, north], body)
+
+    assert [stop["activity_id"] for stop in stops] == [2, 1, 3]
+
+
 def test_recommendation_fallback_filters_weak_theme_matches(monkeypatch):
     def activity(item_id, name, latitude, metadata=None):
         return SimpleNamespace(
