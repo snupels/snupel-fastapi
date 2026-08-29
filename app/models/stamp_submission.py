@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum as SqlEnum, ForeignKey, Index, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.dialects.mysql import BIGINT
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -13,6 +14,7 @@ class StampSubmission(TimestampMixin, Base):
     __table_args__ = (
         Index("stamp_submissions_passport_idx", "passport_id"),
         Index("stamp_submissions_status_idx", "status"),
+        Index("stamp_submissions_feed_idx", "status", "share_to_feed", "reviewed_at"),
     )
 
     id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True, autoincrement=True)
@@ -23,6 +25,8 @@ class StampSubmission(TimestampMixin, Base):
         BIGINT(unsigned=True), ForeignKey("stamps.id", ondelete="CASCADE")
     )
     object_key: Mapped[str] = mapped_column(String(500))
+    share_to_feed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    feed_caption: Mapped[str | None] = mapped_column(String(300))
     status: Mapped[SubmissionStatus] = mapped_column(
         SqlEnum(SubmissionStatus), default=SubmissionStatus.pending
     )

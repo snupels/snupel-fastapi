@@ -363,6 +363,31 @@ def test_stamp_submission_routes_are_private_and_admin_review_has_activity():
             assert (offset, limit) == (0, 20)
             return [submission]
 
+        async def list_feed(self, *, user=None, offset, limit):
+            if user is not None:
+                assert user.id == 7
+            assert (offset, limit) == (0, 20)
+            return [
+                {
+                    "id": 1,
+                    "proof_url": "https://signed.example.com/proof",
+                    "caption": "설악산 완주!",
+                    "author_name": "강원 스포츠 탐험가",
+                    "place_name": "설악산 트레일 챌린지",
+                    "sigun": "속초시",
+                    "sport_name": "트레킹",
+                    "approved_at": NOW,
+                }
+            ]
+
+        async def update_feed_visibility(self, item_id, body, actor):
+            assert (item_id, actor.id) == (1, 7)
+            assert body.share_to_feed is True
+            return submission | {
+                "share_to_feed": True,
+                "feed_caption": body.feed_caption,
+            }
+
         async def list_admin(self, status, *, offset, limit):
             assert status.value == "pending"
             assert (offset, limit) == (0, 20)
@@ -399,6 +424,14 @@ def test_stamp_submission_routes_are_private_and_admin_review_has_activity():
             json={"passportId": 4, "stampId": 2, "objectKey": "proofs/4/2/x.jpg"},
             headers=user_headers,
         )
+        public_feed = client.get("/api/community-feed")
+        assert client.get("/api/community-feed/me").status_code == 401
+        own_feed = client.get("/api/community-feed/me", headers=user_headers)
+        visibility = client.patch(
+            "/api/stamp-submissions/1/feed",
+            json={"shareToFeed": True, "feedCaption": "  설악산 완주!  "},
+            headers=user_headers,
+        )
 
     assert admin.status_code == 200
     assert admin.json()[0]["activity"] == {
@@ -411,6 +444,11 @@ def test_stamp_submission_routes_are_private_and_admin_review_has_activity():
     }
     assert upload.status_code == 200
     assert created.status_code == 201
+    assert public_feed.status_code == 200
+    assert public_feed.json()[0]["authorName"] == "강원 스포츠 탐험가"
+    assert own_feed.status_code == 200
+    assert visibility.status_code == 200
+    assert visibility.json()["feedCaption"] == "설악산 완주!"
 
 
 def test_stamp_submission_reject_requires_non_blank_reason():

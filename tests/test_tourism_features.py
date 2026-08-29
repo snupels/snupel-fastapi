@@ -952,12 +952,22 @@ def test_stamp_submission_requires_owned_published_mission_and_prefix():
         async def pending(self, *_):
             return False
 
-        async def create(self, passport_id, stamp_id, object_key):
+        async def create(
+            self,
+            passport_id,
+            stamp_id,
+            object_key,
+            *,
+            share_to_feed=False,
+            feed_caption=None,
+        ):
             return SimpleNamespace(
                 id=1,
                 passport_id=passport_id,
                 stamp_id=stamp_id,
                 object_key=object_key,
+                share_to_feed=share_to_feed,
+                feed_caption=feed_caption,
                 status=SubmissionStatus.pending,
                 reviewer_id=None,
                 reviewed_at=None,
@@ -986,8 +996,98 @@ def test_stamp_submission_requires_owned_published_mission_and_prefix():
     result = asyncio.run(service.create(valid, user))
     assert result["status"] == SubmissionStatus.pending
     assert result["proof_url"] == "signed"
+    assert result["share_to_feed"] is False
     assert service.repository.locks == [False, False, True]
     assert service.storage.validated == ["proofs/1/2/x.jpg"]
+
+
+def test_stamp_submission_community_feed_is_approved_opt_in_and_anonymous():
+    activity = SimpleNamespace(
+        place_name="설악산 트레일 챌린지",
+        sigun="속초시",
+        sport_name="트레킹",
+    )
+    submission = SimpleNamespace(
+        id=12,
+        object_key="proofs/1/2/feed.jpg",
+        feed_caption="정상에서 만나요!",
+        reviewed_at=datetime(2026, 5, 15),
+    )
+
+    class Repository:
+        calls = []
+
+        async def list_feed(self, *, user_id=None, offset=0, limit=20):
+            self.calls.append((user_id, offset, limit))
+            return [(submission, activity)]
+
+    class Storage:
+        def proof_url(self, object_key):
+            assert object_key == submission.object_key
+            return "https://signed.example.com/feed.jpg"
+
+    service = StampSubmissionService(Repository(), Storage())
+    public = asyncio.run(service.list_feed(offset=20, limit=10))
+    own = asyncio.run(
+        service.list_feed(user=LoginUser(7, "private@example.com"), offset=0, limit=5)
+    )
+
+    assert public[0] == {
+        "id": 12,
+        "proof_url": "https://signed.example.com/feed.jpg",
+        "caption": "정상에서 만나요!",
+        "author_name": "강원 스포츠 탐험가",
+        "place_name": "설악산 트레일 챌린지",
+        "sigun": "속초시",
+        "sport_name": "트레킹",
+        "approved_at": datetime(2026, 5, 15),
+    }
+    assert "private@example.com" not in str(public)
+    assert service.repository.calls == [(None, 20, 10), (7, 0, 5)]
+    assert own == public
+
+
+def test_feed_visibility_can_only_update_owned_submission():
+    row = SimpleNamespace(id=5)
+
+    class Repository:
+        owned = None
+
+        async def get_owned(self, item_id, user_id):
+            assert (item_id, user_id) == (5, 7)
+            return self.owned
+
+        async def update_feed_visibility(self, owned, *, share_to_feed, feed_caption):
+            owned.share_to_feed = share_to_feed
+            owned.feed_caption = feed_caption
+            return owned
+
+    class Storage:
+        def proof_url(self, _):
+            return "signed"
+
+    repository = Repository()
+    service = StampSubmissionService(repository, Storage())
+    body = SimpleNamespace(share_to_feed=True, feed_caption="공개합니다")
+    user = LoginUser(7, "user@example.com")
+
+    with pytest.raises(ApiError) as error:
+        asyncio.run(service.update_feed_visibility(5, body, user))
+    assert error.value.status == 404
+
+    repository.owned = row
+    row.passport_id = 1
+    row.stamp_id = 2
+    row.object_key = "proofs/1/2/x.jpg"
+    row.status = SubmissionStatus.approved
+    row.reviewer_id = 9
+    row.reviewed_at = datetime(2026, 5, 15)
+    row.rejection_reason = None
+    row.created_at = datetime(2026, 5, 1)
+    row.updated_at = datetime(2026, 5, 15)
+    result = asyncio.run(service.update_feed_visibility(5, body, user))
+    assert result["share_to_feed"] is True
+    assert result["feed_caption"] == "공개합니다"
 
 
 def test_stamp_submission_rejects_foreign_passport_and_pending_submission():

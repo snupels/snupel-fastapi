@@ -66,11 +66,21 @@ class StampSubmissionRepository:
             )
         )
 
-    async def create(self, passport_id: int, stamp_id: int, object_key: str):
+    async def create(
+        self,
+        passport_id: int,
+        stamp_id: int,
+        object_key: str,
+        *,
+        share_to_feed: bool = False,
+        feed_caption: str | None = None,
+    ):
         row = StampSubmission(
             passport_id=passport_id,
             stamp_id=stamp_id,
             object_key=object_key,
+            share_to_feed=share_to_feed,
+            feed_caption=feed_caption,
             status=SubmissionStatus.pending,
         )
         self.session.add(row)
@@ -110,6 +120,53 @@ class StampSubmissionRepository:
         return await self.session.scalar(
             select(StampSubmission).where(StampSubmission.id == item_id).with_for_update()
         )
+
+    async def get_owned(self, item_id: int, user_id: int):
+        return await self.session.scalar(
+            select(StampSubmission)
+            .join(Passport, Passport.id == StampSubmission.passport_id)
+            .where(StampSubmission.id == item_id, Passport.user_id == user_id)
+            .with_for_update()
+        )
+
+    async def list_feed(
+        self,
+        *,
+        user_id: int | None = None,
+        offset: int = 0,
+        limit: int = 20,
+    ):
+        query = (
+            select(StampSubmission, Activity)
+            .join(Stamp, Stamp.id == StampSubmission.stamp_id)
+            .join(Activity, Activity.id == Stamp.activity_id)
+            .join(Passport, Passport.id == StampSubmission.passport_id)
+            .where(
+                StampSubmission.status == SubmissionStatus.approved,
+                StampSubmission.share_to_feed.is_(True),
+            )
+        )
+        if user_id is not None:
+            query = query.where(Passport.user_id == user_id)
+        query = (
+            query.order_by(StampSubmission.reviewed_at.desc(), StampSubmission.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return list((await self.session.execute(query)).all())
+
+    async def update_feed_visibility(
+        self,
+        row: StampSubmission,
+        *,
+        share_to_feed: bool,
+        feed_caption: str | None,
+    ):
+        row.share_to_feed = share_to_feed
+        row.feed_caption = feed_caption if share_to_feed else None
+        await self.session.flush()
+        await self.session.refresh(row)
+        return row
 
     async def approve(self, row: StampSubmission, reviewer_id: int):
         if not await self.collected(row.passport_id, row.stamp_id):

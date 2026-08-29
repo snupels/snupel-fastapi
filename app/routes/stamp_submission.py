@@ -7,6 +7,8 @@ from app.models import SubmissionStatus
 from app.schemas.common import Pagination
 from app.schemas.stamp_submission import (
     AdminStampSubmissionResponse,
+    CommunityFeedResponse,
+    FeedVisibilityUpdate,
     RejectSubmission,
     StampSubmissionCreate,
     StampSubmissionResponse,
@@ -48,6 +50,40 @@ async def list_own(
 ):
     return await service.list_user(
         actor, offset=pagination.offset, limit=pagination.size
+    )
+
+
+@router.patch(
+    "/api/stamp-submissions/{item_id}/feed",
+    response_model=StampSubmissionResponse,
+)
+async def update_feed_visibility(
+    body: FeedVisibilityUpdate,
+    item_id: int = Path(gt=0),
+    actor: LoginUser = Depends(require_user),
+    service=Depends(get_stamp_submission_service),
+):
+    return await service.update_feed_visibility(item_id, body, actor)
+
+
+@router.get("/api/community-feed", response_model=list[CommunityFeedResponse])
+async def community_feed(
+    pagination: Annotated[Pagination, Depends()],
+    service=Depends(get_stamp_submission_service),
+):
+    return await service.list_feed(offset=pagination.offset, limit=pagination.size)
+
+
+@router.get("/api/community-feed/me", response_model=list[CommunityFeedResponse])
+async def own_community_feed(
+    pagination: Annotated[Pagination, Depends()],
+    actor: LoginUser = Depends(require_user),
+    service=Depends(get_stamp_submission_service),
+):
+    return await service.list_feed(
+        user=actor,
+        offset=pagination.offset,
+        limit=pagination.size,
     )
 
 

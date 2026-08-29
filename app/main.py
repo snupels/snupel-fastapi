@@ -43,7 +43,9 @@ async def security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
-    if request.url.path.startswith(("/api/auth", "/api/stamp-submissions", "/api/admin", "/admin")):
+    if request.url.path.startswith(
+        ("/api/auth", "/api/stamp-submissions", "/api/community-feed", "/api/admin", "/admin")
+    ):
         response.headers["Cache-Control"] = "no-store"
     if os.getenv("ENVIRONMENT") == "production":
         response.headers["Strict-Transport-Security"] = "max-age=31536000"

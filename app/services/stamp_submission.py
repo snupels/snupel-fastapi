@@ -40,7 +40,11 @@ class StampSubmissionService:
         await self._target(body.passport_id, body.stamp_id, user.id, lock=True)
         return self._response(
             await self.repository.create(
-                body.passport_id, body.stamp_id, body.object_key
+                body.passport_id,
+                body.stamp_id,
+                body.object_key,
+                share_to_feed=body.share_to_feed,
+                feed_caption=body.feed_caption if body.share_to_feed else None,
             )
         )
 
@@ -52,6 +56,8 @@ class StampSubmissionService:
                 "passport_id",
                 "stamp_id",
                 "object_key",
+                "share_to_feed",
+                "feed_caption",
                 "status",
                 "reviewer_id",
                 "reviewed_at",
@@ -66,6 +72,43 @@ class StampSubmissionService:
     ):
         rows = await self.repository.list_user(user.id, offset=offset, limit=limit)
         return [self._response(row) for row in rows]
+
+    def _feed_response(self, row, activity):
+        return {
+            "id": row.id,
+            "proof_url": self.storage.proof_url(row.object_key),
+            "caption": row.feed_caption,
+            "author_name": "강원 스포츠 탐험가",
+            "place_name": activity.place_name,
+            "sigun": activity.sigun,
+            "sport_name": activity.sport_name,
+            "approved_at": row.reviewed_at,
+        }
+
+    async def list_feed(
+        self,
+        *,
+        user: LoginUser | None = None,
+        offset: int = 0,
+        limit: int = 20,
+    ):
+        rows = await self.repository.list_feed(
+            user_id=user.id if user else None,
+            offset=offset,
+            limit=limit,
+        )
+        return [self._feed_response(row, activity) for row, activity in rows]
+
+    async def update_feed_visibility(self, item_id: int, body, user: LoginUser):
+        row = await self.repository.get_owned(item_id, user.id)
+        if not row:
+            raise ApiError(404, "not_found", "Stamp submission not found.")
+        updated = await self.repository.update_feed_visibility(
+            row,
+            share_to_feed=body.share_to_feed,
+            feed_caption=body.feed_caption,
+        )
+        return self._response(updated)
 
     async def list_admin(
         self, status: SubmissionStatus, *, offset: int = 0, limit: int = 20

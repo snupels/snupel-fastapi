@@ -33,6 +33,21 @@ class StampSubmissionCreate(Dto):
         max_length=500,
         validation_alias=AliasChoices("objectKey", "object_key"),
     )
+    share_to_feed: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("shareToFeed", "share_to_feed"),
+    )
+    feed_caption: str | None = Field(
+        default=None,
+        max_length=300,
+        validation_alias=AliasChoices("feedCaption", "feed_caption"),
+    )
+
+    @field_validator("feed_caption")
+    @classmethod
+    def strip_caption(cls, value: str | None) -> str | None:
+        value = value.strip() if value is not None else None
+        return value or None
 
 
 class StampSubmissionResponse(TimestampedResponse):
@@ -44,6 +59,8 @@ class StampSubmissionResponse(TimestampedResponse):
     reviewed_at: datetime | None = Field(serialization_alias="reviewedAt")
     rejection_reason: str | None = Field(serialization_alias="rejectionReason")
     proof_url: str | None = Field(default=None, serialization_alias="proofUrl")
+    share_to_feed: bool = Field(default=False, serialization_alias="shareToFeed")
+    feed_caption: str | None = Field(default=None, serialization_alias="feedCaption")
 
 
 class SubmissionActivityResponse(OrmDto):
@@ -57,6 +74,34 @@ class SubmissionActivityResponse(OrmDto):
 
 class AdminStampSubmissionResponse(StampSubmissionResponse):
     activity: SubmissionActivityResponse
+
+
+class FeedVisibilityUpdate(Dto):
+    share_to_feed: bool = Field(
+        validation_alias=AliasChoices("shareToFeed", "share_to_feed")
+    )
+    feed_caption: str | None = Field(
+        default=None,
+        max_length=300,
+        validation_alias=AliasChoices("feedCaption", "feed_caption"),
+    )
+
+    @field_validator("feed_caption")
+    @classmethod
+    def strip_caption(cls, value: str | None) -> str | None:
+        value = value.strip() if value is not None else None
+        return value or None
+
+
+class CommunityFeedResponse(OrmDto):
+    id: int = Field(gt=0)
+    proof_url: str | None = Field(serialization_alias="proofUrl")
+    caption: str | None
+    author_name: str = Field(serialization_alias="authorName")
+    place_name: str | None = Field(serialization_alias="placeName")
+    sigun: str | None
+    sport_name: str | None = Field(serialization_alias="sportName")
+    approved_at: datetime = Field(serialization_alias="approvedAt")
 
 
 class RejectSubmission(Dto):
