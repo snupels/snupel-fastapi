@@ -20,7 +20,10 @@ PROVIDERS = {
         "profile_url": "https://kapi.kakao.com/v2/user/me",
         "client_id_env": "KAKAO_CLIENT_ID",
         "client_secret_env": "KAKAO_CLIENT_SECRET",
-        "scope": "account_email",
+        # The existing Kakao app is not a business app, so account_email is not
+        # available. A stable provider id is sufficient for account creation;
+        # the user completes nickname/profile details in our onboarding flow.
+        "scope": "",
     },
 }
 
@@ -46,15 +49,15 @@ def is_allowed_redirect_uri(uri: str) -> bool:
 
 def authorization_url(provider: AuthProvider, redirect_uri: str, state: str) -> str:
     config = _config(provider)
-    query = urlencode(
-        {
-            "client_id": config["client_id"],
-            "redirect_uri": redirect_uri,
-            "response_type": "code",
-            "state": state,
-            "scope": config["scope"],
-        }
-    )
+    params = {
+        "client_id": config["client_id"],
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "state": state,
+    }
+    if config["scope"]:
+        params["scope"] = config["scope"]
+    query = urlencode(params)
     return f"{config['authorization_url']}?{query}"
 
 

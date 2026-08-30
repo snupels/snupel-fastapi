@@ -44,8 +44,25 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          KAKAO_CLIENT_ID: ${{ secrets.KAKAO_CLIENT_ID }}
+          KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
         run: |
+          python3 - <<'PY' > "$RUNNER_TEMP/oauth-env.json"
+          import json
+          import os
+
+          print(json.dumps({
+              "AUTH_ALLOWED_REDIRECT_URIS": "https://sportspassport.kr/login/",
+              "GOOGLE_CLIENT_ID": os.environ.get("GOOGLE_CLIENT_ID", ""),
+              "GOOGLE_CLIENT_SECRET": os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+              "KAKAO_CLIENT_ID": os.environ.get("KAKAO_CLIENT_ID", ""),
+              "KAKAO_CLIENT_SECRET": os.environ.get("KAKAO_CLIENT_SECRET", ""),
+          }))
+          PY
           rsync -az --delete --exclude .git --exclude .env --exclude .venv \
             ./ "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/"
           ssh "$SSH_USER@$SSH_HOST" \
-            "cd '$DEPLOY_PATH' && set -a && source .env && set +a && test -n \"\${DATABASE_URL:-}\" && ~/.local/bin/uv sync --frozen --no-dev && ~/.local/bin/uv run alembic upgrade head && sudo install -m 644 deploy/snupel-fastapi.service deploy/snupel-tourism-sync.service deploy/snupel-tourism-sync.timer /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable snupel-fastapi snupel-tourism-sync.timer && sudo systemctl restart snupel-fastapi snupel-tourism-sync.timer && sudo systemctl restart snupel-tourism-sync.service"
+            "cd '$DEPLOY_PATH' && python3 scripts/update_oauth_env.py && set -a && source .env && set +a && test -n \"\${DATABASE_URL:-}\" && ~/.local/bin/uv sync --frozen --no-dev && ~/.local/bin/uv run alembic upgrade head && sudo install -m 644 deploy/snupel-fastapi.service deploy/snupel-tourism-sync.service deploy/snupel-tourism-sync.timer /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable snupel-fastapi snupel-tourism-sync.timer && sudo systemctl restart snupel-fastapi snupel-tourism-sync.timer && sudo systemctl restart snupel-tourism-sync.service" \
+            < "$RUNNER_TEMP/oauth-env.json"
