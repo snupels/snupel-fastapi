@@ -72,6 +72,10 @@ class StampSubmissionRepository:
         stamp_id: int,
         object_key: str,
         *,
+        latitude: float,
+        longitude: float,
+        gps_accuracy_m: float,
+        captured_at: datetime,
         share_to_feed: bool = False,
         feed_caption: str | None = None,
     ):
@@ -79,6 +83,10 @@ class StampSubmissionRepository:
             passport_id=passport_id,
             stamp_id=stamp_id,
             object_key=object_key,
+            latitude=latitude,
+            longitude=longitude,
+            gps_accuracy_m=gps_accuracy_m,
+            captured_at=captured_at,
             share_to_feed=share_to_feed,
             feed_caption=feed_caption,
             status=SubmissionStatus.pending,
@@ -167,6 +175,11 @@ class StampSubmissionRepository:
         await self.session.flush()
         await self.session.refresh(row)
         return row
+
+    async def target_activity(self, stamp_id: int):
+        return await self.session.scalar(
+            select(Activity).join(Stamp, Stamp.activity_id == Activity.id).where(Stamp.id == stamp_id)
+        )
 
     async def approve(self, row: StampSubmission, reviewer_id: int):
         if not await self.collected(row.passport_id, row.stamp_id):

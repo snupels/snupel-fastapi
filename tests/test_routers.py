@@ -335,6 +335,10 @@ def test_stamp_submission_routes_are_private_and_admin_review_has_activity():
         "passport_id": 4,
         "stamp_id": 2,
         "object_key": "proofs/4/2/x.jpg",
+        "latitude": 37.70939,
+        "longitude": 127.9063,
+        "gps_accuracy_m": 12.0,
+        "captured_at": NOW,
         "status": "pending",
         "reviewer_id": None,
         "reviewed_at": None,
@@ -421,7 +425,15 @@ def test_stamp_submission_routes_are_private_and_admin_review_has_activity():
         )
         created = client.post(
             "/api/stamp-submissions",
-            json={"passportId": 4, "stampId": 2, "objectKey": "proofs/4/2/x.jpg"},
+            json={
+                "passportId": 4,
+                "stampId": 2,
+                "objectKey": "proofs/4/2/x.jpg",
+                "latitude": 37.70939,
+                "longitude": 127.9063,
+                "gpsAccuracyM": 12,
+                "capturedAt": NOW,
+            },
             headers=user_headers,
         )
         public_feed = client.get("/api/community-feed")

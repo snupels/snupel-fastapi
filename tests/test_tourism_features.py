@@ -952,12 +952,19 @@ def test_stamp_submission_requires_owned_published_mission_and_prefix():
         async def pending(self, *_):
             return False
 
+        async def target_activity(self, *_):
+            return SimpleNamespace(latitude=37.70939, longitude=127.9063)
+
         async def create(
             self,
             passport_id,
             stamp_id,
             object_key,
             *,
+            latitude,
+            longitude,
+            gps_accuracy_m,
+            captured_at,
             share_to_feed=False,
             feed_caption=None,
         ):
@@ -966,6 +973,10 @@ def test_stamp_submission_requires_owned_published_mission_and_prefix():
                 passport_id=passport_id,
                 stamp_id=stamp_id,
                 object_key=object_key,
+                latitude=latitude,
+                longitude=longitude,
+                gps_accuracy_m=gps_accuracy_m,
+                captured_at=captured_at,
                 share_to_feed=share_to_feed,
                 feed_caption=feed_caption,
                 status=SubmissionStatus.pending,
@@ -987,12 +998,22 @@ def test_stamp_submission_requires_owned_published_mission_and_prefix():
 
     service = StampSubmissionService(Repository(), Storage())
     user = LoginUser(7, "user@example.com")
-    invalid = StampSubmissionCreate(passport_id=1, stamp_id=2, object_key="proofs/9/2/x.jpg")
+    gps = {
+        "latitude": 37.70939,
+        "longitude": 127.9063,
+        "gps_accuracy_m": 10,
+        "captured_at": datetime(2026, 10, 4, 9),
+    }
+    invalid = StampSubmissionCreate(
+        passport_id=1, stamp_id=2, object_key="proofs/9/2/x.jpg", **gps
+    )
     with pytest.raises(ApiError) as error:
         asyncio.run(service.create(invalid, user))
     assert error.value.status == 400
 
-    valid = StampSubmissionCreate(passport_id=1, stamp_id=2, object_key="proofs/1/2/x.jpg")
+    valid = StampSubmissionCreate(
+        passport_id=1, stamp_id=2, object_key="proofs/1/2/x.jpg", **gps
+    )
     result = asyncio.run(service.create(valid, user))
     assert result["status"] == SubmissionStatus.pending
     assert result["proof_url"] == "signed"
@@ -1083,6 +1104,10 @@ def test_feed_visibility_can_only_update_owned_submission():
     row.reviewer_id = 9
     row.reviewed_at = datetime(2026, 5, 15)
     row.rejection_reason = None
+    row.latitude = None
+    row.longitude = None
+    row.gps_accuracy_m = None
+    row.captured_at = None
     row.created_at = datetime(2026, 5, 1)
     row.updated_at = datetime(2026, 5, 15)
     result = asyncio.run(service.update_feed_visibility(5, body, user))
