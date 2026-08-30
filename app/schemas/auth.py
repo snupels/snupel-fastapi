@@ -146,5 +146,13 @@ class PasswordResetConfirm(Dto):
     new_password: str = Field(min_length=8, max_length=128, validation_alias="newPassword")
 
 
+class PasswordVerifyRequest(Dto):
+    current_password: str = Field(min_length=1, max_length=128, validation_alias="currentPassword")
+
+
+class PasswordChangeRequest(PasswordVerifyRequest):
+    new_password: str = Field(min_length=8, max_length=128, validation_alias="newPassword")
+
+
 class MessageResponse(Dto):
     message: str

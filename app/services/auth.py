@@ -119,6 +119,28 @@ class AuthService:
         )
         return self._response(user)
 
+    async def verify_password(self, actor: LoginUser, current_password: str) -> None:
+        user = await self.repository.find_user_by_id(actor.id)
+        if not user or not user.password_hash:
+            raise ApiError(400, "password_unavailable", "Password verification is unavailable for this account.")
+        try:
+            await run_in_threadpool(password_hasher.verify, user.password_hash, current_password)
+        except (InvalidHashError, VerifyMismatchError):
+            raise ApiError(400, "invalid_credentials", "Current password is incorrect.") from None
+
+    async def change_password(self, actor: LoginUser, current_password: str, new_password: str) -> None:
+        user = await self.repository.find_user_by_id(actor.id)
+        if not user or not user.password_hash:
+            raise ApiError(400, "password_unavailable", "Password change is unavailable for this account.")
+        try:
+            await run_in_threadpool(password_hasher.verify, user.password_hash, current_password)
+        except (InvalidHashError, VerifyMismatchError):
+            raise ApiError(400, "invalid_credentials", "Current password is incorrect.") from None
+        await self.repository.change_password(
+            user,
+            await run_in_threadpool(password_hasher.hash, new_password),
+        )
+
     async def me(self, actor: LoginUser) -> AuthUser:
         user = await self.repository.find_user_by_id(actor.id)
         if not user:

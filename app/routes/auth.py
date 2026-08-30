@@ -18,6 +18,8 @@ from app.schemas.auth import (
     OAuthLoginRequest,
     PasswordResetConfirm,
     PasswordResetRequest,
+    PasswordChangeRequest,
+    PasswordVerifyRequest,
     ProfileUpdateRequest,
     ProfileUploadRequest,
     ProfileUploadResponse,
@@ -120,6 +122,26 @@ async def confirm_password_reset(
 ):
     await service.confirm_password_reset(body)
     return {"message": "Password has been reset."}
+
+
+@router.post("/password/verify", response_model=MessageResponse)
+async def verify_password(
+    body: PasswordVerifyRequest,
+    actor: LoginUser = Depends(require_user),
+    service: AuthService = Depends(get_auth_service),
+):
+    await service.verify_password(actor, body.current_password)
+    return {"message": "Password verified."}
+
+
+@router.post("/password/change", response_model=MessageResponse)
+async def change_password(
+    body: PasswordChangeRequest,
+    actor: LoginUser = Depends(require_user),
+    service: AuthService = Depends(get_auth_service),
+):
+    await service.change_password(actor, body.current_password, body.new_password)
+    return {"message": "Password changed."}
 
 
 @router.get("/oauth/{provider}/authorize", response_model=OAuthAuthorizeResponse)

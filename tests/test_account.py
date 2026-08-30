@@ -114,6 +114,61 @@ def test_password_reset_rejects_expired_or_wrong_code(monkeypatch):
     assert (error.value.status, error.value.code) == (400, "invalid_reset_code")
 
 
+def test_logged_in_user_can_verify_and_change_password(monkeypatch):
+    user = SimpleNamespace(id=7, email="user@example.com", password_hash="old-hash")
+    changed = {}
+
+    class Repository:
+        async def find_user_by_id(self, _user_id):
+            return user
+
+        async def change_password(self, row, password_hash):
+            changed["user"] = row
+            changed["hash"] = password_hash
+
+    monkeypatch.setattr(
+        "app.services.auth.password_hasher",
+        SimpleNamespace(
+            verify=lambda password_hash, password: password_hash == "old-hash" and password == "old-password",
+            hash=lambda password: f"hashed:{password}",
+        ),
+    )
+    service = AuthService(Repository())
+    actor = LoginUser(7, "user@example.com")
+
+    asyncio.run(service.verify_password(actor, "old-password"))
+    asyncio.run(service.change_password(actor, "old-password", "new-password"))
+
+    assert changed == {"user": user, "hash": "hashed:new-password"}
+
+
+def test_password_verification_rejects_wrong_password(monkeypatch):
+    user = SimpleNamespace(id=7, email="user@example.com", password_hash="old-hash")
+
+    class Repository:
+        async def find_user_by_id(self, _user_id):
+            return user
+
+    def reject_password(*_args):
+        from argon2.exceptions import VerifyMismatchError
+
+        raise VerifyMismatchError
+
+    monkeypatch.setattr(
+        "app.services.auth.password_hasher",
+        SimpleNamespace(verify=reject_password),
+    )
+
+    with pytest.raises(ApiError) as error:
+        asyncio.run(
+            AuthService(Repository()).verify_password(
+                LoginUser(7, "user@example.com"), "wrong-password"
+            )
+        )
+
+    assert (error.value.status, error.value.code) == (400, "invalid_credentials")
+
+
 def test_signup_requires_terms_privacy_and_nickname():
     with pytest.raises(ValidationError):
         SignupRequest(email="user@example.com", password="password123")

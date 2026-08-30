@@ -102,3 +102,7 @@ class AuthRepository:
         user.password_hash = password_hash
         code.used_at = datetime.now()
         await self.session.flush()
+
+    async def change_password(self, user: User, password_hash: str) -> None:
+        user.password_hash = password_hash
+        await self.session.flush()
