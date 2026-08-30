@@ -1,7 +1,9 @@
-from sqlalchemy import select
+from datetime import datetime
+
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Passport, SocialAccount, User
+from app.models import Passport, PasswordResetCode, SocialAccount, User
 
 
 class AuthRepository:
@@ -10,6 +12,9 @@ class AuthRepository:
 
     async def find_user_by_email(self, email: str) -> User | None:
         return await self.session.scalar(select(User).where(User.email == email))
+
+    async def find_user_by_id(self, user_id: int) -> User | None:
+        return await self.session.get(User, user_id)
 
     async def find_social_user(self, provider: str, provider_user_id: str) -> User | None:
         return await self.session.scalar(
@@ -47,4 +52,36 @@ class AuthRepository:
                 provider_user_id=provider_user_id,
             )
         )
+        await self.session.flush()
+
+    async def update_profile(self, user: User, **values) -> User:
+        for key, value in values.items():
+            setattr(user, key, value)
+        await self.session.flush()
+        await self.session.refresh(user)
+        return user
+
+    async def create_reset_code(
+        self, *, user_id: int, code_hash: str, expires_at: datetime
+    ) -> PasswordResetCode:
+        await self.session.execute(
+            update(PasswordResetCode)
+            .where(PasswordResetCode.user_id == user_id, PasswordResetCode.used_at.is_(None))
+            .values(used_at=datetime.now())
+        )
+        row = PasswordResetCode(user_id=user_id, code_hash=code_hash, expires_at=expires_at)
+        self.session.add(row)
+        await self.session.flush()
+        return row
+
+    async def active_reset_code(self, user_id: int) -> PasswordResetCode | None:
+        return await self.session.scalar(
+            select(PasswordResetCode)
+            .where(PasswordResetCode.user_id == user_id, PasswordResetCode.used_at.is_(None))
+            .order_by(PasswordResetCode.id.desc())
+        )
+
+    async def reset_password(self, user: User, code: PasswordResetCode, password_hash: str) -> None:
+        user.password_hash = password_hash
+        code.used_at = datetime.now()
         await self.session.flush()

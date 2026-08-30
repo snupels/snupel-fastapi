@@ -46,6 +46,27 @@ class ProofStorage:
             "expires_in": UPLOAD_EXPIRES_IN,
         }
 
+    def profile_upload(self, user_id: int, content_type: str) -> dict:
+        extension = CONTENT_TYPES.get(content_type)
+        if not extension:
+            raise ApiError(400, "bad_request", "Only JPEG, PNG, and WebP images are allowed.")
+        if not self.bucket:
+            raise ApiError(503, "storage_unavailable", "Profile image storage is not configured.")
+        key = f"profiles/{user_id}/{uuid4().hex}.{extension}"
+        post = self.client.generate_presigned_post(
+            self.bucket,
+            key,
+            Fields={"Content-Type": content_type},
+            Conditions=[{"Content-Type": content_type}, ["content-length-range", 1, MAX_UPLOAD_BYTES]],
+            ExpiresIn=UPLOAD_EXPIRES_IN,
+        )
+        return {
+            "upload_url": post["url"],
+            "fields": post["fields"],
+            "object_key": key,
+            "expires_in": UPLOAD_EXPIRES_IN,
+        }
+
     def proof_url(self, object_key: str) -> str | None:
         if not self.client:
             return None

@@ -1,3 +1,9 @@
+from datetime import datetime, timedelta
+from hashlib import sha256
+import hmac
+import os
+import secrets
+
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from fastapi import Depends
@@ -10,22 +16,39 @@ from app.deps.auth import LoginUser, sign_access_token
 from app.exceptions import ApiError
 from app.repositories.auth import AuthRepository
 from app.schemas.auth import AuthProvider, AuthResponse, AuthUser
+from app.services.mail import send_mail
+from app.services.storage import ProofStorage, get_proof_storage
 from .oauth import fetch_profile, is_allowed_redirect_uri
 
 password_hasher = PasswordHasher()
 
 
 class AuthService:
-    def __init__(self, repository: AuthRepository) -> None:
+    def __init__(self, repository: AuthRepository, storage: ProofStorage | None = None) -> None:
         self.repository = repository
+        self.storage = storage
 
-    @staticmethod
-    def _response(user) -> AuthResponse:
+    def _user(self, user) -> AuthUser:
+        profile_url = (
+            self.storage.proof_url(getattr(user, "profile_image_key", None))
+            if self.storage and getattr(user, "profile_image_key", None)
+            else None
+        )
+        return AuthUser(
+            id=user.id,
+            email=user.email,
+            nickname=getattr(user, "nickname", None),
+            profile_image_url=profile_url,
+            birth_date=getattr(user, "birth_date", None),
+            gender=getattr(user, "gender", None),
+        )
+
+    def _response(self, user) -> AuthResponse:
         token, expires_in = sign_access_token(LoginUser(user.id, user.email))
         return AuthResponse(
             access_token=token,
             expires_in=expires_in,
-            user=AuthUser(id=user.id, email=user.email),
+            user=self._user(user),
         )
 
     async def signup(self, body) -> AuthResponse:
@@ -78,6 +101,89 @@ class AuthService:
         )
         return self._response(user)
 
+    async def me(self, actor: LoginUser) -> AuthUser:
+        user = await self.repository.find_user_by_id(actor.id)
+        if not user:
+            raise ApiError(404, "not_found", "User not found.")
+        return self._user(user)
+
+    async def update_profile(self, actor: LoginUser, body) -> AuthUser:
+        user = await self.repository.find_user_by_id(actor.id)
+        if not user:
+            raise ApiError(404, "not_found", "User not found.")
+        if body.profile_image_key:
+            prefix = f"profiles/{actor.id}/"
+            if not body.profile_image_key.startswith(prefix):
+                raise ApiError(400, "bad_request", "Invalid profile image object key.")
+            if not self.storage:
+                raise ApiError(503, "storage_unavailable", "Profile image storage is unavailable.")
+            await run_in_threadpool(self.storage.validate, body.profile_image_key)
+        values = {
+            field: getattr(body, field)
+            for field in ("nickname", "profile_image_key", "birth_date", "gender")
+            if field in body.model_fields_set
+        }
+        updated = await self.repository.update_profile(user, **values)
+        return self._user(updated)
+
+    async def profile_upload(self, actor: LoginUser, content_type: str):
+        if not self.storage:
+            raise ApiError(503, "storage_unavailable", "Profile image storage is unavailable.")
+        return self.storage.profile_upload(actor.id, content_type)
+
+    @staticmethod
+    def _code_hash(email: str, code: str) -> str:
+        secret = os.getenv("JWT_SECRET", "development-reset-secret")
+        return sha256(f"{secret}:{email}:{code}".encode()).hexdigest()
+
+    async def account_reminder(self, email: str) -> None:
+        normalized = email.lower()
+        user = await self.repository.find_user_by_email(normalized)
+        if user:
+            await run_in_threadpool(
+                send_mail,
+                normalized,
+                "[강원 스포츠 패스포트] 아이디 안내",
+                f"회원님의 아이디는 {normalized} 입니다.\n본인이 요청하지 않았다면 이 메일을 무시해 주세요.",
+            )
+
+    async def request_password_reset(self, email: str) -> None:
+        normalized = email.lower()
+        user = await self.repository.find_user_by_email(normalized)
+        if not user:
+            return
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        await self.repository.create_reset_code(
+            user_id=user.id,
+            code_hash=self._code_hash(normalized, code),
+            expires_at=datetime.now() + timedelta(minutes=10),
+        )
+        await run_in_threadpool(
+            send_mail,
+            normalized,
+            "[강원 스포츠 패스포트] 비밀번호 재설정 인증번호",
+            f"비밀번호 재설정 인증번호는 {code} 입니다.\n인증번호는 10분 동안 유효합니다.",
+        )
+
+    async def confirm_password_reset(self, body) -> None:
+        normalized = str(body.email).lower()
+        user = await self.repository.find_user_by_email(normalized)
+        if not user:
+            raise ApiError(400, "invalid_reset_code", "Invalid or expired reset code.")
+        reset = await self.repository.active_reset_code(user.id)
+        supplied_hash = self._code_hash(normalized, body.code)
+        if (
+            not reset
+            or reset.expires_at < datetime.now()
+            or not hmac.compare_digest(reset.code_hash, supplied_hash)
+        ):
+            raise ApiError(400, "invalid_reset_code", "Invalid or expired reset code.")
+        await self.repository.reset_password(
+            user,
+            reset,
+            await run_in_threadpool(password_hasher.hash, body.new_password),
+        )
+
 
 def get_auth_service(session: AsyncSession = Depends(get_session)) -> AuthService:
-    return AuthService(AuthRepository(session))
+    return AuthService(AuthRepository(session), get_proof_storage())

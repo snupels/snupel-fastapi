@@ -5,14 +5,23 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Request, Response
 
 from app.exceptions import ApiError
+from app.deps.auth import LoginUser, require_user
 from app.deps.rate_limit import RateLimiter
 from app.schemas.auth import (
+    AccountReminderRequest,
     AuthProvider,
     AuthResponse,
     LoginRequest,
+    MessageResponse,
     OAuthAuthorizeResponse,
     OAuthLoginRequest,
+    PasswordResetConfirm,
+    PasswordResetRequest,
+    ProfileUpdateRequest,
+    ProfileUploadRequest,
+    ProfileUploadResponse,
     SignupRequest,
+    AuthUser,
 )
 from app.services.auth import AuthService, get_auth_service
 from app.services.oauth import authorization_url, is_allowed_redirect_uri
@@ -45,6 +54,59 @@ async def signup(body: SignupRequest, service: AuthService = Depends(get_auth_se
 @router.post("/login", response_model=AuthResponse)
 async def login(body: LoginRequest, service: AuthService = Depends(get_auth_service)):
     return await service.login(body)
+
+
+@router.get("/me", response_model=AuthUser)
+async def me(
+    actor: LoginUser = Depends(require_user),
+    service: AuthService = Depends(get_auth_service),
+):
+    return await service.me(actor)
+
+
+@router.patch("/me", response_model=AuthUser)
+async def update_me(
+    body: ProfileUpdateRequest,
+    actor: LoginUser = Depends(require_user),
+    service: AuthService = Depends(get_auth_service),
+):
+    return await service.update_profile(actor, body)
+
+
+@router.post("/profile-photo/upload-url", response_model=ProfileUploadResponse)
+async def profile_photo_upload_url(
+    body: ProfileUploadRequest,
+    actor: LoginUser = Depends(require_user),
+    service: AuthService = Depends(get_auth_service),
+):
+    return await service.profile_upload(actor, body.content_type)
+
+
+@router.post("/account-reminder", response_model=MessageResponse)
+async def account_reminder(
+    body: AccountReminderRequest,
+    service: AuthService = Depends(get_auth_service),
+):
+    await service.account_reminder(str(body.email))
+    return {"message": "If the account exists, an email has been sent."}
+
+
+@router.post("/password-reset/request", response_model=MessageResponse)
+async def request_password_reset(
+    body: PasswordResetRequest,
+    service: AuthService = Depends(get_auth_service),
+):
+    await service.request_password_reset(str(body.email))
+    return {"message": "If the account exists, a reset code has been sent."}
+
+
+@router.post("/password-reset/confirm", response_model=MessageResponse)
+async def confirm_password_reset(
+    body: PasswordResetConfirm,
+    service: AuthService = Depends(get_auth_service),
+):
+    await service.confirm_password_reset(body)
+    return {"message": "Password has been reset."}
 
 
 @router.get("/oauth/{provider}/authorize", response_model=OAuthAuthorizeResponse)
