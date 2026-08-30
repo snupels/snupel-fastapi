@@ -1,4 +1,5 @@
 from datetime import date
+import re
 from enum import Enum
 from typing import Literal
 
@@ -17,6 +18,7 @@ class AuthUser(Dto):
     id: int = Field(gt=0)
     email: EmailStr
     nickname: str | None = None
+    phone_number: str | None = Field(default=None, serialization_alias="phoneNumber")
     profile_image_url: str | None = Field(default=None, serialization_alias="profileImageUrl")
     birth_date: date | None = Field(default=None, serialization_alias="birthDate")
     gender: Gender | None = None
@@ -42,6 +44,7 @@ class SignupRequest(Dto):
     birth_date: date | None = Field(default=None, validation_alias="birthDate")
     gender: Gender | None = None
     nickname: str = Field(min_length=2, max_length=30)
+    phone_number: str = Field(min_length=10, max_length=13, validation_alias="phoneNumber")
     agree_terms: Literal[True] = Field(validation_alias="agreeTerms")
     agree_privacy: Literal[True] = Field(validation_alias="agreePrivacy")
     agree_marketing_email: bool = Field(
@@ -50,6 +53,14 @@ class SignupRequest(Dto):
     agree_marketing_sns: bool = Field(
         default=False, validation_alias="agreeMarketingSns"
     )
+
+    @field_validator("phone_number")
+    @classmethod
+    def clean_phone_number(cls, value: str) -> str:
+        digits = re.sub(r"\D", "", value)
+        if not re.fullmatch(r"01[016789]\d{7,8}", digits):
+            raise ValueError("phoneNumber must be a valid Korean mobile number")
+        return digits
 
 
 class LoginRequest(Dto):
@@ -70,6 +81,9 @@ class OAuthLoginRequest(Dto):
 
 class ProfileUpdateRequest(Dto):
     nickname: str | None = Field(default=None, max_length=30)
+    phone_number: str | None = Field(
+        default=None, min_length=10, max_length=13, validation_alias="phoneNumber"
+    )
     profile_image_key: str | None = Field(
         default=None, max_length=500, validation_alias="profileImageKey"
     )
@@ -95,6 +109,16 @@ class ProfileUpdateRequest(Dto):
         if value is not None and not 2 <= len(value) <= 30:
             raise ValueError("nickname must be between 2 and 30 characters")
         return value or None
+
+    @field_validator("phone_number")
+    @classmethod
+    def clean_phone_number(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        digits = re.sub(r"\D", "", value)
+        if not re.fullmatch(r"01[016789]\d{7,8}", digits):
+            raise ValueError("phoneNumber must be a valid Korean mobile number")
+        return digits
 
 
 class ProfileUploadRequest(Dto):

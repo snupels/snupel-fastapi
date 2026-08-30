@@ -121,10 +121,12 @@ def test_signup_requires_terms_privacy_and_nickname():
         email="user@example.com",
         password="password123",
         nickname="강원러너",
+        phoneNumber="010-1234-5678",
         agreeTerms=True,
         agreePrivacy=True,
     )
     assert request.nickname == "강원러너"
+    assert request.phone_number == "01012345678"
     assert request.agree_terms is True
     assert request.agree_privacy is True
 
@@ -134,6 +136,7 @@ def test_onboarding_requires_profile_nickname_and_required_consents():
         id=7,
         email="user@example.com",
         nickname="강원러너",
+        phone_number="01012345678",
         profile_image_key="profiles/7/photo.jpg",
         birth_date=None,
         gender=None,

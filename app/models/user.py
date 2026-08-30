@@ -18,6 +18,7 @@ class User(TimestampMixin, Base):
     birth_date: Mapped[date | None] = mapped_column(Date)
     gender: Mapped[Gender | None] = mapped_column(SqlEnum(Gender))
     nickname: Mapped[str | None] = mapped_column(String(30))
+    phone_number: Mapped[str | None] = mapped_column(String(11))
     profile_image_key: Mapped[str | None] = mapped_column(String(500))
     terms_agreed_at: Mapped[datetime | None] = mapped_column(DateTime)
     privacy_agreed_at: Mapped[datetime | None] = mapped_column(DateTime)
