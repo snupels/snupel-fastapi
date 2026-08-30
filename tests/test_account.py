@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi.testclient import TestClient
@@ -131,7 +132,7 @@ def test_signup_requires_terms_privacy_and_nickname():
     assert request.agree_privacy is True
 
 
-def test_onboarding_requires_profile_nickname_and_required_consents():
+def test_onboarding_requires_nickname_phone_and_required_consents_but_not_photo():
     complete = SimpleNamespace(
         id=7,
         email="user@example.com",
@@ -147,4 +148,33 @@ def test_onboarding_requires_profile_nickname_and_required_consents():
     )
     assert AuthService(object())._user(complete).onboarding_required is False
     complete.profile_image_key = None
-    assert AuthService(object())._user(complete).onboarding_required is True
+    assert AuthService(object())._user(complete).onboarding_required is False
+
+
+def test_kakao_oauth_start_redirects_and_rejects_unapproved_redirect(monkeypatch):
+    redirect_uri = "https://sportspassport.kr/login/"
+    monkeypatch.setenv("KAKAO_CLIENT_ID", "kakao-client")
+    monkeypatch.setenv("KAKAO_CLIENT_SECRET", "kakao-secret")
+    monkeypatch.setenv("AUTH_ALLOWED_REDIRECT_URIS", redirect_uri)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/auth/oauth/kakao/start",
+            params={"redirectUri": redirect_uri},
+            follow_redirects=False,
+        )
+        invalid = client.get(
+            "/api/auth/oauth/kakao/start",
+            params={"redirectUri": "https://malicious.example/login/"},
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 302
+    location = urlparse(response.headers["location"])
+    query = parse_qs(location.query)
+    assert location.netloc == "kauth.kakao.com"
+    assert query["client_id"] == ["kakao-client"]
+    assert query["redirect_uri"] == [redirect_uri]
+    assert query["state"][0]
+    assert "oauth_state_kakao=" in response.headers["set-cookie"]
+    assert invalid.status_code == 400

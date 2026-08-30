@@ -3,6 +3,7 @@ import secrets
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi.responses import RedirectResponse
 
 from app.exceptions import ApiError
 from app.deps.auth import LoginUser, require_user
@@ -44,6 +45,18 @@ def provider_from(value: str) -> AuthProvider:
         return AuthProvider(value)
     except ValueError:
         raise ApiError(400, "unsupported_provider", "Unsupported OAuth provider.") from None
+
+
+def set_oauth_state_cookie(response: Response, provider: str, state: str) -> None:
+    response.set_cookie(
+        f"oauth_state_{provider}",
+        state,
+        max_age=600,
+        path=f"/api/auth/oauth/{provider}/login",
+        httponly=True,
+        samesite="lax",
+        secure=os.getenv("ENVIRONMENT") == "production",
+    )
 
 
 @router.post("/signup", response_model=AuthResponse, status_code=201)
@@ -119,19 +132,28 @@ def authorize(
     if not is_allowed_redirect_uri(redirect_uri):
         raise ApiError(400, "invalid_request", "redirectUri is not allowed.")
     state = secrets.token_urlsafe(32)
-    response.set_cookie(
-        f"oauth_state_{provider}",
-        state,
-        max_age=600,
-        path=f"/api/auth/oauth/{provider}/login",
-        httponly=True,
-        samesite="lax",
-        secure=os.getenv("ENVIRONMENT") == "production",
-    )
+    set_oauth_state_cookie(response, provider, state)
     return OAuthAuthorizeResponse(
         provider=parsed_provider,
         authorization_url=authorization_url(parsed_provider, redirect_uri, state),
     )
+
+
+@router.get("/oauth/{provider}/start", response_class=RedirectResponse, status_code=302)
+def start_oauth(
+    provider: str,
+    redirect_uri: Annotated[str, Query(alias="redirectUri")],
+):
+    parsed_provider = provider_from(provider)
+    if not is_allowed_redirect_uri(redirect_uri):
+        raise ApiError(400, "invalid_request", "redirectUri is not allowed.")
+    state = secrets.token_urlsafe(32)
+    response = RedirectResponse(
+        authorization_url(parsed_provider, redirect_uri, state),
+        status_code=302,
+    )
+    set_oauth_state_cookie(response, provider, state)
+    return response
 
 
 @router.post("/oauth/{provider}/login", response_model=AuthResponse)

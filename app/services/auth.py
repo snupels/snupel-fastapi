@@ -46,7 +46,6 @@ class AuthService:
                 (
                     getattr(user, "nickname", None),
                     getattr(user, "phone_number", None),
-                    getattr(user, "profile_image_key", None),
                     getattr(user, "terms_agreed_at", None),
                     getattr(user, "privacy_agreed_at", None),
                 )
