@@ -1,5 +1,6 @@
 from datetime import date
 from enum import Enum
+from typing import Literal
 
 from pydantic import AnyHttpUrl, EmailStr, Field, field_validator
 
@@ -19,6 +20,13 @@ class AuthUser(Dto):
     profile_image_url: str | None = Field(default=None, serialization_alias="profileImageUrl")
     birth_date: date | None = Field(default=None, serialization_alias="birthDate")
     gender: Gender | None = None
+    onboarding_required: bool = Field(default=True, serialization_alias="onboardingRequired")
+    marketing_email_agreed: bool = Field(
+        default=False, serialization_alias="marketingEmailAgreed"
+    )
+    marketing_sns_agreed: bool = Field(
+        default=False, serialization_alias="marketingSnsAgreed"
+    )
 
 
 class AuthResponse(Dto):
@@ -33,6 +41,15 @@ class SignupRequest(Dto):
     password: str = Field(min_length=8, max_length=128)
     birth_date: date | None = Field(default=None, validation_alias="birthDate")
     gender: Gender | None = None
+    nickname: str = Field(min_length=2, max_length=30)
+    agree_terms: Literal[True] = Field(validation_alias="agreeTerms")
+    agree_privacy: Literal[True] = Field(validation_alias="agreePrivacy")
+    agree_marketing_email: bool = Field(
+        default=False, validation_alias="agreeMarketingEmail"
+    )
+    agree_marketing_sns: bool = Field(
+        default=False, validation_alias="agreeMarketingSns"
+    )
 
 
 class LoginRequest(Dto):
@@ -58,6 +75,18 @@ class ProfileUpdateRequest(Dto):
     )
     birth_date: date | None = Field(default=None, validation_alias="birthDate")
     gender: Gender | None = None
+    agree_terms: Literal[True] | None = Field(
+        default=None, validation_alias="agreeTerms"
+    )
+    agree_privacy: Literal[True] | None = Field(
+        default=None, validation_alias="agreePrivacy"
+    )
+    agree_marketing_email: bool | None = Field(
+        default=None, validation_alias="agreeMarketingEmail"
+    )
+    agree_marketing_sns: bool | None = Field(
+        default=None, validation_alias="agreeMarketingSns"
+    )
 
     @field_validator("nickname")
     @classmethod

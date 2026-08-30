@@ -27,13 +27,28 @@ class AuthRepository:
         )
 
     async def create_user(
-        self, *, email: str, password_hash: str | None, birth_date=None, gender=None
+        self,
+        *,
+        email: str,
+        password_hash: str | None,
+        birth_date=None,
+        gender=None,
+        nickname=None,
+        terms_agreed_at=None,
+        privacy_agreed_at=None,
+        marketing_email_agreed=False,
+        marketing_sns_agreed=False,
     ) -> User:
         user = User(
             email=email,
             password_hash=password_hash,
             birth_date=birth_date,
             gender=gender,
+            nickname=nickname,
+            terms_agreed_at=terms_agreed_at,
+            privacy_agreed_at=privacy_agreed_at,
+            marketing_email_agreed=marketing_email_agreed,
+            marketing_sns_agreed=marketing_sns_agreed,
         )
         self.session.add(user)
         await self.session.flush()

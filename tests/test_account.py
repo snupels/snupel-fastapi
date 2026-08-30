@@ -4,11 +4,12 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from app.deps.auth import LoginUser, sign_access_token
 from app.exceptions import ApiError
 from app.main import app
-from app.schemas.auth import PasswordResetConfirm, ProfileUpdateRequest
+from app.schemas.auth import PasswordResetConfirm, ProfileUpdateRequest, SignupRequest
 from app.services.auth import AuthService, get_auth_service
 
 
@@ -110,3 +111,37 @@ def test_password_reset_rejects_expired_or_wrong_code(monkeypatch):
             )
         )
     assert (error.value.status, error.value.code) == (400, "invalid_reset_code")
+
+
+def test_signup_requires_terms_privacy_and_nickname():
+    with pytest.raises(ValidationError):
+        SignupRequest(email="user@example.com", password="password123")
+
+    request = SignupRequest(
+        email="user@example.com",
+        password="password123",
+        nickname="강원러너",
+        agreeTerms=True,
+        agreePrivacy=True,
+    )
+    assert request.nickname == "강원러너"
+    assert request.agree_terms is True
+    assert request.agree_privacy is True
+
+
+def test_onboarding_requires_profile_nickname_and_required_consents():
+    complete = SimpleNamespace(
+        id=7,
+        email="user@example.com",
+        nickname="강원러너",
+        profile_image_key="profiles/7/photo.jpg",
+        birth_date=None,
+        gender=None,
+        terms_agreed_at=datetime.now(),
+        privacy_agreed_at=datetime.now(),
+        marketing_email_agreed=False,
+        marketing_sns_agreed=False,
+    )
+    assert AuthService(object())._user(complete).onboarding_required is False
+    complete.profile_image_key = None
+    assert AuthService(object())._user(complete).onboarding_required is True

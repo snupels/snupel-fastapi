@@ -41,6 +41,16 @@ class AuthService:
             profile_image_url=profile_url,
             birth_date=getattr(user, "birth_date", None),
             gender=getattr(user, "gender", None),
+            onboarding_required=not all(
+                (
+                    getattr(user, "nickname", None),
+                    getattr(user, "profile_image_key", None),
+                    getattr(user, "terms_agreed_at", None),
+                    getattr(user, "privacy_agreed_at", None),
+                )
+            ),
+            marketing_email_agreed=getattr(user, "marketing_email_agreed", False),
+            marketing_sns_agreed=getattr(user, "marketing_sns_agreed", False),
         )
 
     def _response(self, user) -> AuthResponse:
@@ -56,11 +66,17 @@ class AuthService:
         if await self.repository.find_user_by_email(email):
             raise ApiError(400, "email_already_exists", "Email is already registered.")
         try:
+            agreed_at = datetime.now()
             user = await self.repository.create_user(
                 email=email,
                 password_hash=await run_in_threadpool(password_hasher.hash, body.password),
                 birth_date=body.birth_date,
                 gender=body.gender,
+                nickname=body.nickname.strip(),
+                terms_agreed_at=agreed_at,
+                privacy_agreed_at=agreed_at,
+                marketing_email_agreed=body.agree_marketing_email,
+                marketing_sns_agreed=body.agree_marketing_sns,
             )
             return self._response(user)
         except IntegrityError as error:
@@ -123,6 +139,15 @@ class AuthService:
             for field in ("nickname", "profile_image_key", "birth_date", "gender")
             if field in body.model_fields_set
         }
+        now = datetime.now()
+        if body.agree_terms is True and not getattr(user, "terms_agreed_at", None):
+            values["terms_agreed_at"] = now
+        if body.agree_privacy is True and not getattr(user, "privacy_agreed_at", None):
+            values["privacy_agreed_at"] = now
+        if body.agree_marketing_email is not None:
+            values["marketing_email_agreed"] = body.agree_marketing_email
+        if body.agree_marketing_sns is not None:
+            values["marketing_sns_agreed"] = body.agree_marketing_sns
         updated = await self.repository.update_profile(user, **values)
         return self._user(updated)
 

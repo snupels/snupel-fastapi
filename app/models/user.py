@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, Enum as SqlEnum, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Enum as SqlEnum, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.dialects.mysql import BIGINT
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,6 +19,10 @@ class User(TimestampMixin, Base):
     gender: Mapped[Gender | None] = mapped_column(SqlEnum(Gender))
     nickname: Mapped[str | None] = mapped_column(String(30))
     profile_image_key: Mapped[str | None] = mapped_column(String(500))
+    terms_agreed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    privacy_agreed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    marketing_email_agreed: Mapped[bool] = mapped_column(Boolean, default=False)
+    marketing_sns_agreed: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class SocialAccount(TimestampMixin, Base):
