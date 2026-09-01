@@ -1,5 +1,3 @@
-from math import asin, cos, radians, sin, sqrt
-
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
@@ -13,8 +11,6 @@ from app.services.storage import ProofStorage, get_proof_storage
 
 
 class StampSubmissionService:
-    MAX_GPS_DISTANCE_M = 1500
-
     def __init__(self, repository: StampSubmissionRepository, storage: ProofStorage) -> None:
         self.repository = repository
         self.storage = storage
@@ -37,16 +33,6 @@ class StampSubmissionService:
 
     async def create(self, body, user: LoginUser):
         await self._target(body.passport_id, body.stamp_id, user.id)
-        activity = await self.repository.target_activity(body.stamp_id)
-        if not activity or activity.latitude is None or activity.longitude is None:
-            raise ApiError(400, "gps_unavailable", "Mission GPS target is unavailable.")
-        if self._distance_m(
-            body.latitude,
-            body.longitude,
-            float(activity.latitude),
-            float(activity.longitude),
-        ) > self.MAX_GPS_DISTANCE_M:
-            raise ApiError(400, "outside_mission_area", "GPS location is outside the mission area.")
         prefix = f"proofs/{body.passport_id}/{body.stamp_id}/"
         if not body.object_key.startswith(prefix):
             raise ApiError(400, "bad_request", "Invalid proof object key.")
@@ -57,10 +43,6 @@ class StampSubmissionService:
                 body.passport_id,
                 body.stamp_id,
                 body.object_key,
-                latitude=body.latitude,
-                longitude=body.longitude,
-                gps_accuracy_m=body.gps_accuracy_m,
-                captured_at=body.captured_at,
                 share_to_feed=body.share_to_feed,
                 feed_caption=body.feed_caption if body.share_to_feed else None,
             )
@@ -74,10 +56,6 @@ class StampSubmissionService:
                 "passport_id",
                 "stamp_id",
                 "object_key",
-                "latitude",
-                "longitude",
-                "gps_accuracy_m",
-                "captured_at",
                 "share_to_feed",
                 "feed_caption",
                 "status",
@@ -88,15 +66,6 @@ class StampSubmissionService:
                 "updated_at",
             )
         } | {"proof_url": self.storage.proof_url(row.object_key)}
-
-    @staticmethod
-    def _distance_m(latitude: float, longitude: float, target_latitude: float, target_longitude: float) -> float:
-        latitude_delta = radians(target_latitude - latitude)
-        longitude_delta = radians(target_longitude - longitude)
-        start_latitude = radians(latitude)
-        end_latitude = radians(target_latitude)
-        haversine = sin(latitude_delta / 2) ** 2 + cos(start_latitude) * cos(end_latitude) * sin(longitude_delta / 2) ** 2
-        return 6_371_000 * 2 * asin(sqrt(haversine))
 
     async def list_user(
         self, user: LoginUser, *, offset: int = 0, limit: int = 20

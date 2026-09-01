@@ -1,8 +1,6 @@
 from datetime import datetime
 
-from decimal import Decimal
-
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.dialects.mysql import BIGINT
 from sqlalchemy.orm import Mapped, mapped_column
@@ -27,10 +25,6 @@ class StampSubmission(TimestampMixin, Base):
         BIGINT(unsigned=True), ForeignKey("stamps.id", ondelete="CASCADE")
     )
     object_key: Mapped[str] = mapped_column(String(500))
-    latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
-    longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
-    gps_accuracy_m: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))
-    captured_at: Mapped[datetime | None] = mapped_column(DateTime)
     share_to_feed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     feed_caption: Mapped[str | None] = mapped_column(String(300))
     status: Mapped[SubmissionStatus] = mapped_column(

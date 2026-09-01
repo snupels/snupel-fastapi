@@ -33,14 +33,6 @@ class StampSubmissionCreate(Dto):
         max_length=500,
         validation_alias=AliasChoices("objectKey", "object_key"),
     )
-    latitude: float = Field(ge=-90, le=90)
-    longitude: float = Field(ge=-180, le=180)
-    gps_accuracy_m: float = Field(
-        gt=0, le=5000, validation_alias=AliasChoices("gpsAccuracyM", "gps_accuracy_m")
-    )
-    captured_at: datetime = Field(
-        validation_alias=AliasChoices("capturedAt", "captured_at")
-    )
     share_to_feed: bool = Field(
         default=False,
         validation_alias=AliasChoices("shareToFeed", "share_to_feed"),
@@ -62,10 +54,6 @@ class StampSubmissionResponse(TimestampedResponse):
     passport_id: int = Field(serialization_alias="passportId")
     stamp_id: int = Field(serialization_alias="stampId")
     object_key: str = Field(serialization_alias="objectKey")
-    latitude: float | None
-    longitude: float | None
-    gps_accuracy_m: float | None = Field(serialization_alias="gpsAccuracyM")
-    captured_at: datetime | None = Field(serialization_alias="capturedAt")
     status: SubmissionStatus
     reviewer_id: int | None = Field(serialization_alias="reviewerId")
     reviewed_at: datetime | None = Field(serialization_alias="reviewedAt")
