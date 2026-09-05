@@ -98,16 +98,17 @@ def test_oauth_creates_only_new_users(monkeypatch):
     monkeypatch.setattr("app.services.auth.is_allowed_redirect_uri", lambda _: True)
     monkeypatch.setattr(
         "app.services.auth.fetch_profile",
-        lambda *_: ("provider-user", "oauth@example.com"),
+        lambda *_: ("provider-user", None),
     )
     body = SimpleNamespace(redirect_uri="https://sportspassport.kr/oauth", code="code")
 
     new = Repository()
-    asyncio.run(AuthService(new).oauth_login(AuthProvider.google, body))
+    result = asyncio.run(AuthService(new).oauth_login(AuthProvider.kakao, body))
     assert (new.created, new.linked) == (1, 1)
+    assert result.user.email == "kakao_provider-user@oauth.sportspassport.kr"
 
     existing = Repository(SimpleNamespace(id=3, email="existing@example.com"))
-    asyncio.run(AuthService(existing).oauth_login(AuthProvider.google, body))
+    asyncio.run(AuthService(existing).oauth_login(AuthProvider.kakao, body))
     assert (existing.created, existing.linked) == (0, 0)
 
 

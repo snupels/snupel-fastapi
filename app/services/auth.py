@@ -104,7 +104,9 @@ class AuthService:
         user = await self.repository.find_social_user(provider.value, provider_user_id)
         if user:
             return self._response(user)
-        email = (profile_email or f"{provider.value}_{provider_user_id}@oauth.snupel.local").lower()
+        email = (
+            profile_email or f"{provider.value}_{provider_user_id}@oauth.sportspassport.kr"
+        ).lower()
         if await self.repository.find_user_by_email(email):
             raise ApiError(
                 400,
