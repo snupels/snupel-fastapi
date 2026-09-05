@@ -107,13 +107,9 @@ class AuthService:
         email = (
             profile_email or f"{provider.value}_{provider_user_id}@oauth.sportspassport.kr"
         ).lower()
-        if await self.repository.find_user_by_email(email):
-            raise ApiError(
-                400,
-                "oauth_email_exists",
-                "Email is already registered. Log in before linking OAuth.",
-            )
-        user = await self.repository.create_user(email=email, password_hash=None)
+        user = await self.repository.find_user_by_email(email)
+        if not user:
+            user = await self.repository.create_user(email=email, password_hash=None)
         await self.repository.create_social_account(
             user_id=user.id,
             provider=provider.value,

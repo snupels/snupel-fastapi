@@ -74,18 +74,19 @@ def test_create_user_propagates_passport_failure_for_transaction_rollback():
         )
 
 
-def test_oauth_creates_only_new_users(monkeypatch):
+def test_oauth_creates_or_links_users(monkeypatch):
     class Repository:
-        def __init__(self, existing=None):
-            self.existing = existing
+        def __init__(self, social_user=None, email_user=None):
+            self.social_user = social_user
+            self.email_user = email_user
             self.created = 0
             self.linked = 0
 
         async def find_social_user(self, *_):
-            return self.existing
+            return self.social_user
 
         async def find_user_by_email(self, _email):
-            return None
+            return self.email_user
 
         async def create_user(self, **values):
             self.created += 1
@@ -107,9 +108,17 @@ def test_oauth_creates_only_new_users(monkeypatch):
     assert (new.created, new.linked) == (1, 1)
     assert result.user.email == "kakao_provider-user@oauth.sportspassport.kr"
 
-    existing = Repository(SimpleNamespace(id=3, email="existing@example.com"))
-    asyncio.run(AuthService(existing).oauth_login(AuthProvider.kakao, body))
-    assert (existing.created, existing.linked) == (0, 0)
+    existing_social = Repository(social_user=SimpleNamespace(id=3, email="existing@example.com"))
+    asyncio.run(AuthService(existing_social).oauth_login(AuthProvider.kakao, body))
+    assert (existing_social.created, existing_social.linked) == (0, 0)
+
+    monkeypatch.setattr(
+        "app.services.auth.fetch_profile",
+        lambda *_: ("provider-user", "existing@example.com"),
+    )
+    existing_email = Repository(email_user=SimpleNamespace(id=4, email="existing@example.com"))
+    asyncio.run(AuthService(existing_email).oauth_login(AuthProvider.google, body))
+    assert (existing_email.created, existing_email.linked) == (0, 1)
 
 
 def test_stamp_catalog_connection_is_unique_and_sets_null_on_delete():
