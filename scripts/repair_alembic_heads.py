@@ -6,8 +6,26 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.config import database_url
 
 
-ANCESTOR_REVISION = "0015_pyeongchang_olympic_museum_mission"
-CURRENT_REVISION = "0016_feed_engagement"
+OVERLAPPING_REVISION_PAIRS = (
+    ("0015_pyeongchang_olympic_museum_mission", "0016_feed_engagement"),
+    ("0022_gangneung_olympic_museum_site", "0023_remove_kwandong_hockey_center"),
+)
+
+
+def redundant_revisions(revisions: set[str]) -> set[str]:
+    redundant = set()
+    for ancestor, descendant in OVERLAPPING_REVISION_PAIRS:
+        ancestor_revision = next(
+            (revision for revision in revisions if ancestor.startswith(revision)),
+            None,
+        )
+        descendant_revision = next(
+            (revision for revision in revisions if descendant.startswith(revision)),
+            None,
+        )
+        if ancestor_revision and descendant_revision:
+            redundant.add(ancestor_revision)
+    return redundant
 
 
 async def repair_overlapping_heads() -> None:
@@ -22,20 +40,12 @@ async def repair_overlapping_heads() -> None:
 
             result = await connection.execute(text("SELECT version_num FROM alembic_version"))
             revisions = {str(revision) for revision in result.scalars()}
-            ancestor_revision = next(
-                (revision for revision in revisions if ANCESTOR_REVISION.startswith(revision)),
-                None,
-            )
-            current_revision = next(
-                (revision for revision in revisions if CURRENT_REVISION.startswith(revision)),
-                None,
-            )
-            if ancestor_revision and current_revision:
+            for revision in redundant_revisions(revisions):
                 await connection.execute(
                     text("DELETE FROM alembic_version WHERE version_num = :revision"),
-                    {"revision": ancestor_revision},
+                    {"revision": revision},
                 )
-                print(f"Removed redundant Alembic revision: {ancestor_revision}")
+                print(f"Removed redundant Alembic revision: {revision}")
     finally:
         await engine.dispose()
 
