@@ -186,6 +186,19 @@ def test_tourapi_leports_sport_classification(row, expected):
     assert tourism_sport(row) == expected
 
 
+def test_wolmyeong_fishing_site_survives_tourism_sync():
+    item = tourism_item(
+        {
+            "contentid": "2702189",
+            "contenttypeid": "28",
+            "cat3": "A03030500",
+            "title": "월명낚시터",
+        }
+    )
+
+    assert item["source_url"] == "https://www.wolmyeong.com/"
+
+
 @pytest.mark.parametrize(
     "row",
     [
