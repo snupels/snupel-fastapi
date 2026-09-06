@@ -97,6 +97,7 @@ class CommunityFeedResponse(OrmDto):
     id: int = Field(gt=0)
     proof_url: str | None = Field(serialization_alias="proofUrl")
     caption: str | None
+    author_id: int = Field(gt=0, serialization_alias="authorId")
     author_name: str = Field(serialization_alias="authorName")
     author_profile_image_url: str | None = Field(
         default=None, serialization_alias="authorProfileImageUrl"
@@ -124,6 +125,7 @@ class FeedCommentCreate(Dto):
 
 class FeedCommentResponse(OrmDto):
     id: int = Field(gt=0)
+    author_id: int = Field(gt=0, serialization_alias="authorId")
     author_name: str = Field(serialization_alias="authorName")
     author_profile_image_url: str | None = Field(
         default=None, serialization_alias="authorProfileImageUrl"
