@@ -203,6 +203,7 @@ def test_verified_sports_sites_survive_tourism_sync():
         "2501905": "https://www.surfyy.com/",
         "250475": "https://www.sonohotelsresorts.com/snowyland",
         "3017802": "https://www.4seasonwl.co.kr/",
+        "3017803": "https://www.beaversdock.com/",
         "3083085": "https://www.waterplayno1.com/",
         "2710807": "http://www.lepovalley.com/index",
         "512033": "http://www.noonnara.com/",
