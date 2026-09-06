@@ -133,6 +133,7 @@ OFFICIAL_SPORT_URLS = {
     "2357514": "https://www.cwg.go.kr/tour/contents.do?key=1822",
     "2394618": "http://www.raft.co.kr/",
     "2396259": "http://www.sunbike.kr/",
+    "2501905": "https://www.surfyy.com/",
     "2524948": "https://www.yw.go.kr/tour/contents.do?key=885",
     "2609317": "http://www.jsimc.or.kr/layout/basic/page/page1/page05.html",
     "2610081": "https://www.durunubi.kr/4-2-1-1-walk-mobility-view-detail.do?crs_idx=T_CRS_MNG0000003454",
