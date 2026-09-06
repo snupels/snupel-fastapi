@@ -4,9 +4,25 @@ from pathlib import Path
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 
+from scripts.repair_alembic_heads import redundant_revisions
+
 
 def test_migration_history_has_one_head():
     assert len(ScriptDirectory.from_config(Config("alembic.ini")).get_heads()) == 1
+
+
+def test_repair_removes_only_ancestors_that_overlap_newer_revisions():
+    revisions = {
+        "0015_pyeongchang_olympic_muse",
+        "0016_feed_engagement",
+        "0022_gangneung_olympic_museum",
+        "0023_remove_kwandong_hockey_ce",
+    }
+
+    assert redundant_revisions(revisions) == {
+        "0015_pyeongchang_olympic_muse",
+        "0022_gangneung_olympic_museum",
+    }
 
 
 def test_pyeongchang_olympic_museum_mission_links_tourapi_activity(monkeypatch):
