@@ -73,16 +73,46 @@ class StampSubmissionService:
         rows = await self.repository.list_user(user.id, offset=offset, limit=limit)
         return [self._response(row) for row in rows]
 
-    def _feed_response(self, row, activity):
+    def _profile_url(self, user) -> str | None:
+        key = getattr(user, "profile_image_key", None) if user else None
+        return self.storage.proof_url(key) if key else None
+
+    def _comment_response(self, comment, user):
+        return {
+            "id": comment.id,
+            "author_name": getattr(user, "nickname", None) or "강원 스포츠 탐험가",
+            "author_profile_image_url": self._profile_url(user),
+            "content": comment.content,
+            "created_at": comment.created_at,
+        }
+
+    async def _feed_response(
+        self,
+        row,
+        activity,
+        author=None,
+        viewer_id=None,
+        engagement_values=None,
+    ):
+        if engagement_values is None:
+            engagement = getattr(self.repository, "feed_engagement", None)
+            engagement_values = (
+                await engagement(row.id, viewer_id) if engagement else (0, 0, False)
+            )
+        like_count, comment_count, liked_by_me = engagement_values
         return {
             "id": row.id,
             "proof_url": self.storage.proof_url(row.object_key),
             "caption": row.feed_caption,
-            "author_name": "강원 스포츠 탐험가",
+            "author_name": getattr(author, "nickname", None) or "강원 스포츠 탐험가",
+            "author_profile_image_url": self._profile_url(author),
             "place_name": activity.place_name,
             "sigun": activity.sigun,
             "sport_name": activity.sport_name,
             "approved_at": row.reviewed_at,
+            "like_count": like_count,
+            "comment_count": comment_count,
+            "liked_by_me": liked_by_me,
         }
 
     async def list_feed(
@@ -97,7 +127,43 @@ class StampSubmissionService:
             offset=offset,
             limit=limit,
         )
-        return [self._feed_response(row, activity) for row, activity in rows]
+        result = []
+        for item in rows:
+            row, activity, *extra = item
+            author = extra[0] if extra else None
+            engagement_values = tuple(extra[1:4]) if len(extra) >= 4 else None
+            result.append(
+                await self._feed_response(
+                    row,
+                    activity,
+                    author,
+                    user.id if user else None,
+                    engagement_values,
+                )
+            )
+        return result
+
+    async def update_like(self, item_id: int, user: LoginUser, *, liked: bool):
+        if not await self.repository.visible_feed_item(item_id):
+            raise ApiError(404, "not_found", "Community feed post not found.")
+        if liked:
+            await self.repository.add_like(item_id, user.id)
+        else:
+            await self.repository.remove_like(item_id, user.id)
+        like_count, _, liked_by_me = await self.repository.feed_engagement(item_id, user.id)
+        return {"like_count": like_count, "liked_by_me": liked_by_me}
+
+    async def list_comments(self, item_id: int, *, offset: int = 0, limit: int = 100):
+        if not await self.repository.visible_feed_item(item_id):
+            raise ApiError(404, "not_found", "Community feed post not found.")
+        rows = await self.repository.list_comments(item_id, offset=offset, limit=limit)
+        return [self._comment_response(comment, author) for comment, author in rows]
+
+    async def add_comment(self, item_id: int, content: str, user: LoginUser):
+        if not await self.repository.visible_feed_item(item_id):
+            raise ApiError(404, "not_found", "Community feed post not found.")
+        comment, author = await self.repository.add_comment(item_id, user.id, content)
+        return self._comment_response(comment, author)
 
     async def update_feed_visibility(self, item_id: int, body, user: LoginUser):
         row = await self.repository.get_owned(item_id, user.id)
