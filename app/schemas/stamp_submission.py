@@ -98,10 +98,43 @@ class CommunityFeedResponse(OrmDto):
     proof_url: str | None = Field(serialization_alias="proofUrl")
     caption: str | None
     author_name: str = Field(serialization_alias="authorName")
+    author_profile_image_url: str | None = Field(
+        default=None, serialization_alias="authorProfileImageUrl"
+    )
     place_name: str | None = Field(serialization_alias="placeName")
     sigun: str | None
     sport_name: str | None = Field(serialization_alias="sportName")
     approved_at: datetime = Field(serialization_alias="approvedAt")
+    like_count: int = Field(default=0, ge=0, serialization_alias="likeCount")
+    comment_count: int = Field(default=0, ge=0, serialization_alias="commentCount")
+    liked_by_me: bool = Field(default=False, serialization_alias="likedByMe")
+
+
+class FeedCommentCreate(Dto):
+    content: str = Field(min_length=1, max_length=500)
+
+    @field_validator("content")
+    @classmethod
+    def strip_content(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("comment cannot be blank")
+        return value
+
+
+class FeedCommentResponse(OrmDto):
+    id: int = Field(gt=0)
+    author_name: str = Field(serialization_alias="authorName")
+    author_profile_image_url: str | None = Field(
+        default=None, serialization_alias="authorProfileImageUrl"
+    )
+    content: str
+    created_at: datetime = Field(serialization_alias="createdAt")
+
+
+class FeedEngagementResponse(OrmDto):
+    like_count: int = Field(ge=0, serialization_alias="likeCount")
+    liked_by_me: bool = Field(serialization_alias="likedByMe")
 
 
 class RejectSubmission(Dto):
