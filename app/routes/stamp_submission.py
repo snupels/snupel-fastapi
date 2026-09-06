@@ -88,6 +88,25 @@ async def own_community_feed(
 ):
     return await service.list_feed(
         user=actor,
+        owner_user_id=actor.id,
+        offset=pagination.offset,
+        limit=pagination.size,
+    )
+
+
+@router.get(
+    "/api/community-feed/users/{user_id}",
+    response_model=list[CommunityFeedResponse],
+)
+async def user_community_feed(
+    pagination: Annotated[Pagination, Depends()],
+    user_id: int = Path(gt=0),
+    actor: LoginUser | None = Depends(optional_user),
+    service=Depends(get_stamp_submission_service),
+):
+    return await service.list_feed(
+        user=actor,
+        owner_user_id=user_id,
         offset=pagination.offset,
         limit=pagination.size,
     )
