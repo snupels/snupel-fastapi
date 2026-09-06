@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import exists, select
+from sqlalchemy import delete, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
@@ -8,10 +8,13 @@ from app.models import (
     CollectedStamp,
     Course,
     CourseStamp,
+    FeedComment,
+    FeedLike,
     Passport,
     Stamp,
     StampSubmission,
     SubmissionStatus,
+    User,
 )
 
 
@@ -136,11 +139,39 @@ class StampSubmissionRepository:
         offset: int = 0,
         limit: int = 20,
     ):
+        like_count = (
+            select(func.count(FeedLike.id))
+            .where(FeedLike.submission_id == StampSubmission.id)
+            .correlate(StampSubmission)
+            .scalar_subquery()
+        )
+        comment_count = (
+            select(func.count(FeedComment.id))
+            .where(FeedComment.submission_id == StampSubmission.id)
+            .correlate(StampSubmission)
+            .scalar_subquery()
+        )
+        liked_by_me = (
+            select(exists().where(
+                FeedLike.submission_id == StampSubmission.id,
+                FeedLike.user_id == user_id,
+            )).scalar_subquery()
+            if user_id is not None
+            else False
+        )
         query = (
-            select(StampSubmission, Activity)
+            select(
+                StampSubmission,
+                Activity,
+                User,
+                like_count.label("like_count"),
+                comment_count.label("comment_count"),
+                liked_by_me.label("liked_by_me") if user_id is not None else liked_by_me,
+            )
             .join(Stamp, Stamp.id == StampSubmission.stamp_id)
             .join(Activity, Activity.id == Stamp.activity_id)
             .join(Passport, Passport.id == StampSubmission.passport_id)
+            .join(User, User.id == Passport.user_id)
             .where(
                 StampSubmission.status == SubmissionStatus.approved,
                 StampSubmission.share_to_feed.is_(True),
@@ -154,6 +185,72 @@ class StampSubmissionRepository:
             .limit(limit)
         )
         return list((await self.session.execute(query)).all())
+
+    async def visible_feed_item(self, item_id: int):
+        return await self.session.scalar(
+            select(StampSubmission).where(
+                StampSubmission.id == item_id,
+                StampSubmission.status == SubmissionStatus.approved,
+                StampSubmission.share_to_feed.is_(True),
+            )
+        )
+
+    async def feed_engagement(self, submission_id: int, user_id: int | None = None):
+        like_count = await self.session.scalar(
+            select(func.count(FeedLike.id)).where(FeedLike.submission_id == submission_id)
+        )
+        comment_count = await self.session.scalar(
+            select(func.count(FeedComment.id)).where(FeedComment.submission_id == submission_id)
+        )
+        liked = False
+        if user_id is not None:
+            liked = bool(
+                await self.session.scalar(
+                    select(exists().where(
+                        FeedLike.submission_id == submission_id,
+                        FeedLike.user_id == user_id,
+                    ))
+                )
+            )
+        return int(like_count or 0), int(comment_count or 0), liked
+
+    async def add_like(self, submission_id: int, user_id: int):
+        existing = await self.session.scalar(
+            select(FeedLike).where(
+                FeedLike.submission_id == submission_id, FeedLike.user_id == user_id
+            )
+        )
+        if not existing:
+            self.session.add(FeedLike(submission_id=submission_id, user_id=user_id))
+            await self.session.flush()
+
+    async def remove_like(self, submission_id: int, user_id: int):
+        await self.session.execute(
+            delete(FeedLike).where(
+                FeedLike.submission_id == submission_id, FeedLike.user_id == user_id
+            )
+        )
+
+    async def list_comments(self, submission_id: int, *, offset: int = 0, limit: int = 100):
+        query = (
+            select(FeedComment, User)
+            .join(User, User.id == FeedComment.user_id)
+            .where(FeedComment.submission_id == submission_id)
+            .order_by(FeedComment.created_at.asc(), FeedComment.id.asc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return list((await self.session.execute(query)).all())
+
+    async def add_comment(self, submission_id: int, user_id: int, content: str):
+        comment = FeedComment(
+            submission_id=submission_id, user_id=user_id, content=content
+        )
+        self.session.add(comment)
+        await self.session.flush()
+        await self.session.refresh(comment)
+        user = await self.session.get(User, user_id)
+        return comment, user
 
     async def update_feed_visibility(
         self,
