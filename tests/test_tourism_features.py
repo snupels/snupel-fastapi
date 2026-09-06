@@ -202,6 +202,7 @@ def test_verified_sports_sites_survive_tourism_sync():
         "131963": "http://www.yundaechun.com/",
         "2501905": "https://www.surfyy.com/",
         "2710807": "http://www.lepovalley.com/index",
+        "512033": "http://www.noonnara.com/",
         "898016": "https://www.alpensia.com/ski/main.do",
         "2774566": "http://www.ccmullegil.co.kr/",
         "3531540": "http://2018olympic.co.kr/",
