@@ -205,6 +205,7 @@ def test_verified_sports_sites_survive_tourism_sync():
         "3017802": "https://www.4seasonwl.co.kr/",
         "3017803": "https://www.beaversdock.com/",
         "3083085": "https://www.waterplayno1.com/",
+        "2396259": "https://www.railtrip.co.kr/homepage/jeongdongjin/",
         "2710807": "http://www.lepovalley.com/index",
         "512033": "http://www.noonnara.com/",
         "898016": "https://www.alpensia.com/ski/main.do",
