@@ -87,6 +87,9 @@ SOURCE_PRIORITY = {
     "gangwon_oxygen_road": 3,
     "gangwon_ski_golf": 3,
 }
+OFFICIAL_SPORT_URLS = {
+    "2702189": "https://www.wolmyeong.com/",
+}
 
 
 def items(payload: dict) -> tuple[list[dict], int]:
@@ -251,7 +254,7 @@ def tourism_item(row: dict, category: str = "tour") -> dict:
         "longitude": number(row.get("mapx")),
         "summary": None,
         "address": " ".join(filter(None, (row.get("addr1"), row.get("addr2")))) or None,
-        "source_url": None,
+        "source_url": OFFICIAL_SPORT_URLS.get(str(row["contentid"])),
         "starts_at": date(row.get("eventstartdate")),
         "ends_at": date(row.get("eventenddate")),
         "source_metadata": source_metadata,
