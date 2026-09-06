@@ -154,6 +154,7 @@ OFFICIAL_SPORT_URLS = {
     "2710731": "https://tour.pc.go.kr/Home/H20000/H20200/placeDetail?place_no=234",
     "2710789": "https://www.durunubi.kr/course-detail-view.do?crs_idx=T_CRS_MNG0000004211",
     "2710791": "https://tour.yangyang.go.kr/pub/funheparang.do",
+    "2710807": "http://www.lepovalley.com/index",
     "2710813": "http://www.수산어촌체험마을.kr",
     "2710899": "https://www.instagram.com/cafe18hall/",
     "2714524": "https://www.sonohotelsresorts.com/calm_vp/entertainment/detail/ADD00078750",
