@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.dialects.mysql import BIGINT
 from sqlalchemy.orm import Mapped, mapped_column
@@ -35,3 +35,33 @@ class StampSubmission(TimestampMixin, Base):
     )
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
     rejection_reason: Mapped[str | None] = mapped_column(Text)
+
+
+class FeedLike(TimestampMixin, Base):
+    __tablename__ = "feed_likes"
+    __table_args__ = (
+        UniqueConstraint("submission_id", "user_id", name="feed_likes_submission_user_unique"),
+        Index("feed_likes_submission_idx", "submission_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True, autoincrement=True)
+    submission_id: Mapped[int] = mapped_column(
+        BIGINT(unsigned=True), ForeignKey("stamp_submissions.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[int] = mapped_column(
+        BIGINT(unsigned=True), ForeignKey("users.id", ondelete="CASCADE")
+    )
+
+
+class FeedComment(TimestampMixin, Base):
+    __tablename__ = "feed_comments"
+    __table_args__ = (Index("feed_comments_submission_idx", "submission_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True, autoincrement=True)
+    submission_id: Mapped[int] = mapped_column(
+        BIGINT(unsigned=True), ForeignKey("stamp_submissions.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[int] = mapped_column(
+        BIGINT(unsigned=True), ForeignKey("users.id", ondelete="CASCADE")
+    )
+    content: Mapped[str] = mapped_column(String(500))
