@@ -295,6 +295,8 @@ def test_tourapi_camping_and_campgrounds_are_not_sports(row):
         "철원군 병영체험수련원",
         "태백시청소년수련관",
         "강원 숲체험교육원",
+        "어성전 산림교육관",
+        "철원청소년회관",
         "청소년활동센터",
         "자연 체험학습장",
     ],
@@ -311,6 +313,40 @@ def test_tourapi_training_and_education_facilities_are_not_sports(title):
     )
     assert item["category"] == "tour"
     assert item["sport_name"] is None
+
+
+def test_tourism_sync_completely_excludes_requested_training_sites():
+    class Sync(TourismSync):
+        async def _pages(self, url, _params):
+            if url.endswith("/areaCode2"):
+                return [{"code": "32", "name": "강원"}]
+            if url.endswith("/areaBasedList2"):
+                return [
+                    {"contentid": "131167", "title": "철원청소년회관"},
+                    {"contentid": "131169", "title": "강원 세계잼버리 수련장"},
+                    {"contentid": "131471", "title": "어성전 산림교육관"},
+                ]
+            return []
+
+        async def _file_rows(self, _url):
+            return []
+
+    class Repository:
+        sources = {}
+
+        async def sync_source(self, source, rows, _synced_at):
+            self.sources[source] = rows
+            return len(rows)
+
+        async def sports_dedup_candidates(self):
+            return [], set()
+
+        async def deactivate_activity_ids(self, _ids):
+            return 0
+
+    repository = Repository()
+    asyncio.run(Sync(None, repository, "key").run())
+    assert repository.sources["tourapi"] == []
 
 
 def test_activity_categories_require_sport_type_only_for_sports():

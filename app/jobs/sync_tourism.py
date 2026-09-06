@@ -27,6 +27,7 @@ KAKAO_ADDRESS_URL = "https://dapi.kakao.com/v2/local/search/address.json"
 KAKAO_COORD_TO_ADDRESS_URL = "https://dapi.kakao.com/v2/local/geo/coord2address.json"
 LEPORTS_CONTENT_TYPE = "28"
 EXCLUDED_LEPORTS_CODES = {"A03021700"}
+EXCLUDED_TOURISM_CONTENT_IDS = {"131167", "131169", "131471"}
 EXCLUDED_LEPORTS_KEYWORDS = (
     "캠핑",
     "야영",
@@ -35,7 +36,9 @@ EXCLUDED_LEPORTS_KEYWORDS = (
     "수련원",
     "수련관",
     "교육원",
+    "산림교육관",
     "연수원",
+    "청소년회관",
     "청소년활동센터",
     "청소년문화의집",
     "체험학습장",
@@ -635,6 +638,11 @@ class TourismSync:
         places = await self._pages(
             f"{KOR_BASE}/areaBasedList2", common | {"areaCode": area_code, "arrange": "Q"}
         )
+        places = [
+            row
+            for row in places
+            if str(row.get("contentid")) not in EXCLUDED_TOURISM_CONTENT_IDS
+        ]
         await self._fill_homepages(places, common)
         festivals = await self._pages(
             f"{KOR_BASE}/searchFestival2",
