@@ -201,6 +201,7 @@ def test_verified_sports_sites_survive_tourism_sync():
         "1744974": "https://www.mullegil.com/mullegil/web/",
         "131963": "http://www.yundaechun.com/",
         "2501905": "https://www.surfyy.com/",
+        "250475": "https://www.sonohotelsresorts.com/snowyland",
         "2710807": "http://www.lepovalley.com/index",
         "512033": "http://www.noonnara.com/",
         "898016": "https://www.alpensia.com/ski/main.do",

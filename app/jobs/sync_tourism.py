@@ -112,6 +112,7 @@ OFFICIAL_SPORT_URLS = {
     "131963": "http://www.yundaechun.com/",
     "1744974": "https://www.mullegil.com/mullegil/web/",
     "250473": "http://www.elysian.co.kr/main.asp",
+    "250475": "https://www.sonohotelsresorts.com/snowyland",
     "506216": "http://koreals.co.kr/",
     "506241": "https://fantapia.qrsvc.kr/",
     "506252": "http://www.pointski.com/",
