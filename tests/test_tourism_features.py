@@ -205,6 +205,7 @@ def test_verified_sports_sites_survive_tourism_sync():
         "1744974": "https://www.mullegil.com/mullegil/web/",
         "898016": "https://www.alpensia.com/ski/main.do",
         "2774566": "http://www.ccmullegil.co.kr/",
+        "3531540": "http://2018olympic.co.kr/",
     }
     for content_id, expected_url in items.items():
         item = tourism_item(

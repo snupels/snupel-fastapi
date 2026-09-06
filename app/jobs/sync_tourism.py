@@ -173,6 +173,7 @@ OFFICIAL_SPORT_URLS = {
     "2791166": "http://www.sokchomarina.co.kr/default/",
     "2998006": "https://tour.pc.go.kr/Home/H40000/H40200/placeDetail?place_no=964",
     "3445878": "https://www.durunubi.kr/dmz-course-view.do?crsIdx=IDX00000000000000018",
+    "3531540": "http://2018olympic.co.kr/",
 }
 
 
