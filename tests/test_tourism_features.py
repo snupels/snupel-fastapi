@@ -200,6 +200,24 @@ def test_wolmyeong_fishing_site_survives_tourism_sync():
     assert item["source_url"] == "https://www.wolmyeong.com/"
 
 
+def test_verified_sports_sites_survive_tourism_sync():
+    items = {
+        "1744974": "https://www.mullegil.com/mullegil/web/",
+        "898016": "https://www.alpensia.com/ski/main.do",
+        "2774566": "http://www.ccmullegil.co.kr/",
+    }
+    for content_id, expected_url in items.items():
+        item = tourism_item(
+            {
+                "contentid": content_id,
+                "contenttypeid": "28",
+                "cat3": "A03030200",
+                "title": "스포츠 시설",
+            }
+        )
+        assert item["source_url"] == expected_url
+
+
 def test_tourapi_homepage_is_normalized_as_the_official_site():
     assert homepage_url(
         '<a href="https://sports.example.kr/reserve?a=1&amp;b=2" target="_blank">홈페이지</a>'
