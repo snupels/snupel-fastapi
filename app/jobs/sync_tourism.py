@@ -116,6 +116,7 @@ OFFICIAL_SPORT_URLS = {
     "506241": "https://fantapia.qrsvc.kr/",
     "506252": "http://www.pointski.com/",
     "506532": "http://boardtrader.co.kr",
+    "512033": "http://www.noonnara.com/",
     "512074": "http://www.겨울세상.com",
     "513482": "http://www.ski-911.com",
     "514521": "http://www.whitesports.co.kr",
