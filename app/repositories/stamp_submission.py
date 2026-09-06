@@ -135,7 +135,8 @@ class StampSubmissionRepository:
     async def list_feed(
         self,
         *,
-        user_id: int | None = None,
+        owner_user_id: int | None = None,
+        viewer_user_id: int | None = None,
         offset: int = 0,
         limit: int = 20,
     ):
@@ -154,9 +155,9 @@ class StampSubmissionRepository:
         liked_by_me = (
             select(exists().where(
                 FeedLike.submission_id == StampSubmission.id,
-                FeedLike.user_id == user_id,
+                FeedLike.user_id == viewer_user_id,
             )).scalar_subquery()
-            if user_id is not None
+            if viewer_user_id is not None
             else False
         )
         query = (
@@ -166,7 +167,7 @@ class StampSubmissionRepository:
                 User,
                 like_count.label("like_count"),
                 comment_count.label("comment_count"),
-                liked_by_me.label("liked_by_me") if user_id is not None else liked_by_me,
+                liked_by_me.label("liked_by_me") if viewer_user_id is not None else liked_by_me,
             )
             .join(Stamp, Stamp.id == StampSubmission.stamp_id)
             .join(Activity, Activity.id == Stamp.activity_id)
@@ -177,8 +178,8 @@ class StampSubmissionRepository:
                 StampSubmission.share_to_feed.is_(True),
             )
         )
-        if user_id is not None:
-            query = query.where(Passport.user_id == user_id)
+        if owner_user_id is not None:
+            query = query.where(Passport.user_id == owner_user_id)
         query = (
             query.order_by(StampSubmission.reviewed_at.desc(), StampSubmission.id.desc())
             .offset(offset)
