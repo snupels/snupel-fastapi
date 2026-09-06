@@ -88,6 +88,7 @@ SOURCE_PRIORITY = {
     "gangwon_ski_golf": 3,
 }
 OFFICIAL_SPORT_URLS = {
+    "1744974": "https://www.mullegil.com/mullegil/web/",
     "2702189": "https://www.wolmyeong.com/",
 }
 
@@ -116,6 +117,12 @@ def date(value) -> datetime | None:
 
 def pick(row: dict, *names):
     return next((row[name] for name in names if row.get(name) not in (None, "")), None)
+
+
+def homepage_url(value) -> str | None:
+    text = unescape(str(value or "")).strip()
+    match = re.search(r"https?://[^\s<>\"']+", text, flags=re.IGNORECASE)
+    return match.group(0).rstrip(".,;)") if match else None
 
 
 def stable_id(*values) -> str:
@@ -254,7 +261,8 @@ def tourism_item(row: dict, category: str = "tour") -> dict:
         "longitude": number(row.get("mapx")),
         "summary": None,
         "address": " ".join(filter(None, (row.get("addr1"), row.get("addr2")))) or None,
-        "source_url": OFFICIAL_SPORT_URLS.get(str(row["contentid"])),
+        "source_url": OFFICIAL_SPORT_URLS.get(str(row["contentid"]))
+        or homepage_url(row.get("homepage")),
         "starts_at": date(row.get("eventstartdate")),
         "ends_at": date(row.get("eventenddate")),
         "source_metadata": source_metadata,
@@ -471,6 +479,40 @@ class TourismSync:
             content = file_response.content.decode("cp949")
         return list(csv.DictReader(io.StringIO(content)))
 
+    async def _fill_homepages(self, rows: list[dict], common: dict) -> list[dict]:
+        semaphore = asyncio.Semaphore(8)
+
+        async def fill(row: dict) -> None:
+            content_id = str(row.get("contentid") or "")
+            if not content_id or content_id in OFFICIAL_SPORT_URLS:
+                return
+            if tourism_item(row)["category"] != "sports":
+                return
+            try:
+                async with semaphore:
+                    payload = await self._get(
+                        f"{KOR_BASE}/detailCommon2",
+                        common
+                        | {
+                            "contentId": content_id,
+                            "defaultYN": "N",
+                            "firstImageYN": "N",
+                            "areacodeYN": "N",
+                            "catcodeYN": "N",
+                            "addrinfoYN": "N",
+                            "mapinfoYN": "N",
+                            "overviewYN": "N",
+                        },
+                    )
+                details, _ = items(payload)
+                if details and homepage_url(details[0].get("homepage")):
+                    row["homepage"] = details[0]["homepage"]
+            except (httpx.HTTPError, KeyError, TypeError, ValueError):
+                return
+
+        await asyncio.gather(*(fill(row) for row in rows))
+        return rows
+
     async def _fill_locations(self, rows: list[dict]) -> list[dict]:
         kakao_key = os.getenv("KAKAO_CLIENT_ID")
         if not kakao_key:
@@ -513,6 +555,7 @@ class TourismSync:
         places = await self._pages(
             f"{KOR_BASE}/areaBasedList2", common | {"areaCode": area_code, "arrange": "Q"}
         )
+        await self._fill_homepages(places, common)
         festivals = await self._pages(
             f"{KOR_BASE}/searchFestival2",
             common | {"areaCode": area_code, "eventStartDate": datetime.now().strftime("%Y%m%d")},
