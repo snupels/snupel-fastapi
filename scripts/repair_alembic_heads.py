@@ -21,13 +21,21 @@ async def repair_overlapping_heads() -> None:
                 return
 
             result = await connection.execute(text("SELECT version_num FROM alembic_version"))
-            revisions = set(result.scalars())
-            if {ANCESTOR_REVISION, CURRENT_REVISION}.issubset(revisions):
+            revisions = {str(revision) for revision in result.scalars()}
+            ancestor_revision = next(
+                (revision for revision in revisions if ANCESTOR_REVISION.startswith(revision)),
+                None,
+            )
+            current_revision = next(
+                (revision for revision in revisions if CURRENT_REVISION.startswith(revision)),
+                None,
+            )
+            if ancestor_revision and current_revision:
                 await connection.execute(
                     text("DELETE FROM alembic_version WHERE version_num = :revision"),
-                    {"revision": ANCESTOR_REVISION},
+                    {"revision": ancestor_revision},
                 )
-                print(f"Removed redundant Alembic revision: {ANCESTOR_REVISION}")
+                print(f"Removed redundant Alembic revision: {ancestor_revision}")
     finally:
         await engine.dispose()
 
