@@ -109,6 +109,7 @@ OFFICIAL_SPORT_URLS = {
     "131909": "http://www.blueknu.com",
     "131925": "https://www.paratv.co.kr",
     "131941": "http://www.dreamrafting.net",
+    "131963": "http://www.yundaechun.com/",
     "1744974": "https://www.mullegil.com/mullegil/web/",
     "250473": "http://www.elysian.co.kr/main.asp",
     "506216": "http://koreals.co.kr/",
