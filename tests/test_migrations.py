@@ -17,11 +17,13 @@ def test_repair_removes_only_ancestors_that_overlap_newer_revisions():
         "0016_feed_engagement",
         "0022_gangneung_olympic_museum",
         "0023_remove_kwandong_hockey_ce",
+        "0024_yundaechun_rafting_site",
     }
 
     assert redundant_revisions(revisions) == {
         "0015_pyeongchang_olympic_muse",
         "0022_gangneung_olympic_museum",
+        "0023_remove_kwandong_hockey_ce",
     }
 
 

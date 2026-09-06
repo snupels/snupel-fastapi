@@ -9,6 +9,7 @@ from app.config import database_url
 OVERLAPPING_REVISION_PAIRS = (
     ("0015_pyeongchang_olympic_museum_mission", "0016_feed_engagement"),
     ("0022_gangneung_olympic_museum_site", "0023_remove_kwandong_hockey_center"),
+    ("0023_remove_kwandong_hockey_center", "0024_yundaechun_rafting_site"),
 )
 
 
