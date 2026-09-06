@@ -15,6 +15,7 @@ from app.jobs.sync_tourism import (
     duplicate_activity_ids,
     durunubi_item,
     in_gangwon,
+    homepage_url,
     items,
     marine_facility_item,
     marine_item,
@@ -197,6 +198,63 @@ def test_wolmyeong_fishing_site_survives_tourism_sync():
     )
 
     assert item["source_url"] == "https://www.wolmyeong.com/"
+
+
+def test_tourapi_homepage_is_normalized_as_the_official_site():
+    assert homepage_url(
+        '<a href="https://sports.example.kr/reserve?a=1&amp;b=2" target="_blank">홈페이지</a>'
+    ) == "https://sports.example.kr/reserve?a=1&b=2"
+    assert homepage_url("홈페이지 없음") is None
+
+    item = tourism_item(
+        {
+            "contentid": "sports-site",
+            "contenttypeid": "28",
+            "cat3": "A03030200",
+            "title": "카누 체험장",
+            "homepage": '<a href="https://sports.example.kr/">공식 사이트</a>',
+        }
+    )
+    assert item["source_url"] == "https://sports.example.kr/"
+
+
+def test_tourism_sync_fetches_detail_homepages_for_sports_only():
+    calls = []
+
+    class Sync(TourismSync):
+        async def _get(self, url, params):
+            calls.append((url, params))
+            return {
+                "response": {
+                    "body": {
+                        "items": {
+                            "item": {
+                                "homepage": '<a href="https://sports.example.kr/">바로가기</a>'
+                            }
+                        },
+                        "totalCount": 1,
+                    }
+                }
+            }
+
+    rows = [
+        {
+            "contentid": "sports-site",
+            "contenttypeid": "28",
+            "cat3": "A03030200",
+            "title": "카누 체험장",
+        },
+        {"contentid": "tour-site", "contenttypeid": "12", "title": "일반 관광지"},
+    ]
+    result = asyncio.run(
+        Sync(None, None, "key")._fill_homepages(rows, {"MobileOS": "ETC"})
+    )
+
+    assert result[0]["homepage"].startswith("<a href=")
+    assert "homepage" not in result[1]
+    assert len(calls) == 1
+    assert calls[0][0].endswith("/detailCommon2")
+    assert calls[0][1]["contentId"] == "sports-site"
 
 
 @pytest.mark.parametrize(
