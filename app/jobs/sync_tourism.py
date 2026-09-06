@@ -27,7 +27,7 @@ KAKAO_ADDRESS_URL = "https://dapi.kakao.com/v2/local/search/address.json"
 KAKAO_COORD_TO_ADDRESS_URL = "https://dapi.kakao.com/v2/local/geo/coord2address.json"
 LEPORTS_CONTENT_TYPE = "28"
 EXCLUDED_LEPORTS_CODES = {"A03021700"}
-EXCLUDED_TOURISM_CONTENT_IDS = {"131167", "131169", "131471"}
+EXCLUDED_TOURISM_CONTENT_IDS = {"131167", "131169", "131471", "2534281"}
 EXCLUDED_LEPORTS_KEYWORDS = (
     "캠핑",
     "야영",
@@ -296,12 +296,11 @@ def olympic_sport_categories(row: dict) -> list[str]:
     is_alpensia_sports = "알펜시아" in title and (
         content_type == LEPORTS_CONTENT_TYPE or "스키역사관" in title
     )
-    is_ice_legacy = is_alpensia_sports or "관동하키센터" in title
     is_legacy_museum = (
         "올림픽" in title and any(word in title for word in ("기념관", "뮤지엄"))
     ) or "스키역사관" in title
 
-    if is_ice_legacy:
+    if is_alpensia_sports:
         return ["snow", "olympic_legacy"]
     if is_legacy_museum:
         return ["olympic_legacy"]
@@ -320,11 +319,7 @@ def tourism_image(row: dict) -> str | None:
 def tourism_item(row: dict, category: str = "tour") -> dict:
     sport_name = tourism_sport(row) if category == "tour" else None
     sport_categories = olympic_sport_categories(row) if category == "tour" else []
-    if sport_categories and "관동하키센터" in re.sub(
-        r"\s+", "", str(row.get("title") or "")
-    ):
-        sport_name = "ice_hockey"
-    elif sport_categories and not sport_name:
+    if sport_categories and not sport_name:
         sport_name = "olympic_legacy"
     source_metadata = {
         key: value

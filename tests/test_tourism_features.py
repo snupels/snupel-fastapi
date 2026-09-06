@@ -142,10 +142,6 @@ def test_olympic_museums_are_normalized_as_legacy_sports(title):
             {"contenttypeid": "12", "title": "알펜시아리조트대관령스키역사관"},
             "olympic_legacy",
         ),
-        (
-            {"contenttypeid": "28", "title": "관동하키센터"},
-            "ice_hockey",
-        ),
     ],
 )
 def test_olympic_venues_can_have_snow_and_legacy_categories(row, sport_name):
@@ -326,6 +322,7 @@ def test_tourism_sync_completely_excludes_requested_training_sites():
                     {"contentid": "131167", "title": "철원청소년회관"},
                     {"contentid": "131169", "title": "강원 세계잼버리 수련장"},
                     {"contentid": "131471", "title": "어성전 산림교육관"},
+                    {"contentid": "2534281", "title": "관동하키센터"},
                 ]
             return []
 
