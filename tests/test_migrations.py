@@ -33,3 +33,20 @@ def test_pyeongchang_olympic_museum_mission_links_tourapi_activity(monkeypatch):
     assert parameters["source"] == "tourapi"
     assert parameters["external_id"] == "2733036"
     assert parameters["title"] == migration.MISSION_TITLE
+
+
+def test_feed_engagement_migration_creates_likes_and_comments(monkeypatch):
+    migration_path = Path("alembic/versions/0016_feed_engagement.py")
+    spec = importlib.util.spec_from_file_location("feed_engagement_migration", migration_path)
+    assert spec and spec.loader
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    tables = []
+    indexes = []
+    monkeypatch.setattr(migration.op, "create_table", lambda name, *args, **kwargs: tables.append(name))
+    monkeypatch.setattr(migration.op, "create_index", lambda name, *args, **kwargs: indexes.append(name))
+
+    migration.upgrade()
+
+    assert tables == ["feed_likes", "feed_comments"]
+    assert indexes == ["feed_likes_submission_idx", "feed_comments_submission_idx"]
