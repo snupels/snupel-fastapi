@@ -1041,10 +1041,14 @@ def test_stamp_submission_community_feed_is_approved_opt_in_and_anonymous():
         "proof_url": "https://signed.example.com/feed.jpg",
         "caption": "정상에서 만나요!",
         "author_name": "강원 스포츠 탐험가",
+        "author_profile_image_url": None,
         "place_name": "설악산 트레일 챌린지",
         "sigun": "속초시",
         "sport_name": "트레킹",
         "approved_at": datetime(2026, 5, 15),
+        "like_count": 0,
+        "comment_count": 0,
+        "liked_by_me": False,
     }
     assert "private@example.com" not in str(public)
     assert service.repository.calls == [(None, 20, 10), (7, 0, 5)]
