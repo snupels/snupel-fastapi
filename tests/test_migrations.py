@@ -50,3 +50,14 @@ def test_feed_engagement_migration_creates_likes_and_comments(monkeypatch):
 
     assert tables == ["feed_likes", "feed_comments"]
     assert indexes == ["feed_likes_submission_idx", "feed_comments_submission_idx"]
+
+
+def test_hongcheon_marathon_uses_the_athletics_catalog_stamp():
+    migration = Path("alembic/versions/0017_hongcheon_athletics.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "region_ko = '홍천'" in migration
+    assert "sport_en = 'ATHLETICS'" in migration
+    assert "INSERT IGNORE INTO collected_stamps" in migration
+    assert "UPDATE stamp_submissions" in migration
