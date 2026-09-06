@@ -114,6 +114,7 @@ OFFICIAL_SPORT_URLS = {
     "250473": "http://www.elysian.co.kr/main.asp",
     "250475": "https://www.sonohotelsresorts.com/snowyland",
     "3017802": "https://www.4seasonwl.co.kr/",
+    "3017803": "https://www.beaversdock.com/",
     "3083085": "https://www.waterplayno1.com/",
     "506216": "http://koreals.co.kr/",
     "506241": "https://fantapia.qrsvc.kr/",
