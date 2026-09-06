@@ -363,15 +363,18 @@ def test_stamp_submission_routes_are_private_and_admin_review_has_activity():
             assert (offset, limit) == (0, 20)
             return [submission]
 
-        async def list_feed(self, *, user=None, offset, limit):
+        async def list_feed(self, *, user=None, owner_user_id=None, offset, limit):
             if user is not None:
                 assert user.id == 7
+            if owner_user_id is not None:
+                assert owner_user_id == 7
             assert (offset, limit) == (0, 20)
             return [
                 {
                     "id": 1,
                     "proof_url": "https://signed.example.com/proof",
                     "caption": "설악산 완주!",
+                    "author_id": 7,
                     "author_name": "강원 스포츠 탐험가",
                     "place_name": "설악산 트레일 챌린지",
                     "sigun": "속초시",

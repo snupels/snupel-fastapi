@@ -80,6 +80,7 @@ class StampSubmissionService:
     def _comment_response(self, comment, user):
         return {
             "id": comment.id,
+            "author_id": user.id,
             "author_name": getattr(user, "nickname", None) or "강원 스포츠 탐험가",
             "author_profile_image_url": self._profile_url(user),
             "content": comment.content,
@@ -104,6 +105,7 @@ class StampSubmissionService:
             "id": row.id,
             "proof_url": self.storage.proof_url(row.object_key),
             "caption": row.feed_caption,
+            "author_id": getattr(author, "id", 0),
             "author_name": getattr(author, "nickname", None) or "강원 스포츠 탐험가",
             "author_profile_image_url": self._profile_url(author),
             "place_name": activity.place_name,
@@ -119,11 +121,13 @@ class StampSubmissionService:
         self,
         *,
         user: LoginUser | None = None,
+        owner_user_id: int | None = None,
         offset: int = 0,
         limit: int = 20,
     ):
         rows = await self.repository.list_feed(
-            user_id=user.id if user else None,
+            owner_user_id=owner_user_id,
+            viewer_user_id=user.id if user else None,
             offset=offset,
             limit=limit,
         )

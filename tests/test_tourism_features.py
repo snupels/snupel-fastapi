@@ -1017,13 +1017,16 @@ def test_stamp_submission_community_feed_is_approved_opt_in_and_anonymous():
         feed_caption="정상에서 만나요!",
         reviewed_at=datetime(2026, 5, 15),
     )
+    author = SimpleNamespace(id=7, nickname=None, profile_image_key=None)
 
     class Repository:
         calls = []
 
-        async def list_feed(self, *, user_id=None, offset=0, limit=20):
-            self.calls.append((user_id, offset, limit))
-            return [(submission, activity)]
+        async def list_feed(
+            self, *, owner_user_id=None, viewer_user_id=None, offset=0, limit=20
+        ):
+            self.calls.append((owner_user_id, viewer_user_id, offset, limit))
+            return [(submission, activity, author)]
 
     class Storage:
         def proof_url(self, object_key):
@@ -1040,6 +1043,7 @@ def test_stamp_submission_community_feed_is_approved_opt_in_and_anonymous():
         "id": 12,
         "proof_url": "https://signed.example.com/feed.jpg",
         "caption": "정상에서 만나요!",
+        "author_id": 7,
         "author_name": "강원 스포츠 탐험가",
         "author_profile_image_url": None,
         "place_name": "설악산 트레일 챌린지",
@@ -1051,7 +1055,7 @@ def test_stamp_submission_community_feed_is_approved_opt_in_and_anonymous():
         "liked_by_me": False,
     }
     assert "private@example.com" not in str(public)
-    assert service.repository.calls == [(None, 20, 10), (7, 0, 5)]
+    assert service.repository.calls == [(None, None, 20, 10), (None, 7, 0, 5)]
     assert own == public
 
 
