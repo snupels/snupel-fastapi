@@ -10,6 +10,34 @@ from app.jobs.sync_tourism import TourismSync, tourism_item
 from app.repositories.activity import ActivityRepository
 
 
+def test_requested_mountains_require_api_category_and_gangwon_address():
+    for content_id, title in [("127827", "덕가산"), ("2782911", "응봉"), ("127305", "단풍산")]:
+        row = {"contentid": content_id, "title": title, "contenttypeid": "12",
+               "cat3": "A01010400", "addr1": "강원특별자치도 고성군",
+               "overview": "API 소개<br>원문", "mapy": "38.46", "mapx": "128.44"}
+        result = tourism_item(row)
+        assert result["sport_name"] == "hiking" and result["category"] == "sports"
+        assert result["external_id"] == content_id and result["place_name"] == title
+        assert result["summary"] == "API 소개\n원문"
+        assert result["latitude"] is not None and result["longitude"] is not None
+        assert tourism_item(row | {"addr1": "경기도 가평군"})["category"] == "tour"
+        assert tourism_item(row | {"cat3": "A01010500"})["category"] == "tour"
+
+
+def test_mountain_code_triggers_lookup_without_san_in_title():
+    calls = []
+
+    class Sync(TourismSync):
+        async def _get(self, url, params):
+            calls.append(params["contentId"])
+            return {"response": {"body": {"items": "", "totalCount": 0}}}
+
+    row = {"contentid": "2782911", "title": "응봉", "contenttypeid": "12",
+           "cat3": "A01010400", "addr1": "강원특별자치도 고성군"}
+    asyncio.run(Sync(None, None, "test")._fill_hiking_routes([row], {}))
+    assert calls == ["2782911"]
+
+
 def test_only_api_places_with_route_guidance_become_hiking():
     calls = []
 

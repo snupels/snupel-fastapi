@@ -26,6 +26,9 @@ OXYGEN_ROAD_DATA_URL = "https://www.data.go.kr/data/3045500/fileData.do"
 KAKAO_ADDRESS_URL = "https://dapi.kakao.com/v2/local/search/address.json"
 KAKAO_COORD_TO_ADDRESS_URL = "https://dapi.kakao.com/v2/local/geo/coord2address.json"
 LEPORTS_CONTENT_TYPE = "28"
+MOUNTAIN_CATEGORY_CODE = "A01010400"
+# Existing TourAPI places explicitly requested for sports exploration.
+REQUESTED_MOUNTAIN_IDS = {"127827", "2782911", "127305"}
 EXCLUDED_LEPORTS_CODES = {"A03021700"}
 EXCLUDED_TOURISM_CONTENT_IDS = {"131167", "131169", "131471", "2534281"}
 EXCLUDED_LEPORTS_KEYWORDS = (
@@ -272,7 +275,19 @@ def sigun(value) -> str | None:
     )
 
 
+def requested_gangwon_mountain(row: dict) -> bool:
+    return (
+        str(row.get("contentid")) in REQUESTED_MOUNTAIN_IDS
+        and str(row.get("contenttypeid")) == "12"
+        and row.get("cat3") == MOUNTAIN_CATEGORY_CODE
+        and bool(row.get("title"))
+        and str(row.get("addr1") or "").startswith(("강원특별자치도 ", "강원도 "))
+    )
+
+
 def tourism_sport(row: dict) -> str | None:
+    if requested_gangwon_mountain(row):
+        return "hiking"
     if row.get("api_hiking_routes") and row.get("title") and row.get("addr1"):
         return "hiking"
     if str(row.get("contenttypeid") or "") != LEPORTS_CONTENT_TYPE:
@@ -363,7 +378,8 @@ def tourism_item(row: dict, category: str = "tour") -> dict:
         "summary": "\n\n".join(
             f"{detail['infoname']}\n{tourism_plain_text(detail['infotext'])}"
             for detail in row.get("api_hiking_routes", [])
-        ) or None,
+        ) or (tourism_plain_text(str(row.get("overview") or ""))
+              if requested_gangwon_mountain(row) else None) or None,
         "address": " ".join(filter(None, (row.get("addr1"), row.get("addr2")))) or None,
         "source_url": OFFICIAL_SPORT_URLS.get(str(row["contentid"]))
         or homepage_url(row.get("homepage")),
@@ -605,12 +621,14 @@ class TourismSync:
                             "catcodeYN": "N",
                             "addrinfoYN": "N",
                             "mapinfoYN": "N",
-                            "overviewYN": "N",
+                            "overviewYN": "Y" if requested_gangwon_mountain(row) else "N",
                         },
                     )
                 details, _ = items(payload)
                 if details and homepage_url(details[0].get("homepage")):
                     row["homepage"] = details[0]["homepage"]
+                if details and requested_gangwon_mountain(row):
+                    row["overview"] = details[0].get("overview")
             except (httpx.HTTPError, KeyError, TypeError, ValueError):
                 return
 
@@ -623,7 +641,8 @@ class TourismSync:
 
         async def fill(row: dict) -> None:
             if (str(row.get("contenttypeid")) != "12"
-                    or "산" not in str(row.get("title") or "")
+                    or (row.get("cat3") != MOUNTAIN_CATEGORY_CODE
+                        and "산" not in str(row.get("title") or ""))
                     or not row.get("addr1") or not row.get("contentid")):
                 return
             try:
