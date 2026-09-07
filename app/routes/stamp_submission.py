@@ -112,6 +112,24 @@ async def own_community_feed(
     )
 
 
+@router.get("/api/community-feed/liked", response_model=list[CommunityFeedResponse])
+async def liked_community_feed(
+    pagination: Annotated[Pagination, Depends()],
+    actor: LoginUser = Depends(require_user),
+    service=Depends(get_stamp_submission_service),
+):
+    return await service.list_feed(user=actor, liked_only=True, offset=pagination.offset, limit=pagination.size)
+
+
+@router.get("/api/community-feed/posts/{item_id}", response_model=CommunityFeedResponse)
+async def community_feed_detail(
+    item_id: int = Path(gt=0),
+    actor: LoginUser | None = Depends(optional_user),
+    service=Depends(get_stamp_submission_service),
+):
+    return await service.feed_detail(item_id, actor)
+
+
 @router.get(
     "/api/community-feed/users/{user_id}",
     response_model=list[CommunityFeedResponse],

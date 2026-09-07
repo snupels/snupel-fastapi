@@ -125,10 +125,18 @@ class StampSubmissionService:
         user: LoginUser | None = None,
         owner_user_id: int | None = None,
         following_only: bool = False,
+        liked_only: bool = False,
+        item_id: int | None = None,
         offset: int = 0,
         limit: int = 20,
     ):
         extra_filters = {"following_only": True} if following_only else {}
+        if liked_only:
+            if not user:
+                raise ApiError(401, "unauthorized", "Login required for liked feed.")
+            extra_filters["liked_only"] = True
+        if item_id is not None:
+            extra_filters["item_id"] = item_id
         if following_only and not user:
             raise ApiError(401, "unauthorized", "Login required for following feed.")
         rows = await self.repository.list_feed(
@@ -153,6 +161,12 @@ class StampSubmissionService:
                 )
             )
         return result
+
+    async def feed_detail(self, item_id: int, viewer: LoginUser | None = None):
+        rows = await self.list_feed(user=viewer, item_id=item_id, limit=1)
+        if not rows:
+            raise ApiError(404, "not_found", "Community feed post not found.")
+        return rows[0]
 
     async def community_profile(self, user_id: int, viewer: LoginUser | None = None):
         result = await self.repository.public_profile(user_id, viewer.id if viewer else None)
