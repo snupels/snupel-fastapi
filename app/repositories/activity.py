@@ -219,6 +219,16 @@ class ActivityRepository(CrudRepository):
                 raise ValueError(f"{source} item is missing an external ID")
             seen.add(external_id)
             row = existing.get(external_id)
+            metadata = values.get("source_metadata") or {}
+            previous_metadata = row.source_metadata or {} if row else {}
+            if (source == "tourapi" and metadata.get("hiking_lookup_failed")
+                    and previous_metadata.get("hiking_routes")):
+                # A transient detail lookup failure must not erase verified API routes.
+                values = values | {
+                    "sport_name": row.sport_name, "category": row.category,
+                    "summary": row.summary,
+                    "source_metadata": previous_metadata | metadata,
+                }
             values = values | {
                 "source": source,
                 "last_synced_at": synced_at,

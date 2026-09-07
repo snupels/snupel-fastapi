@@ -1,9 +1,13 @@
 import asyncio
 import importlib.util
+from types import SimpleNamespace
+
+import httpx
 
 from sqlalchemy import create_engine, text
 
 from app.jobs.sync_tourism import TourismSync, tourism_item
+from app.repositories.activity import ActivityRepository
 
 
 def test_only_api_places_with_route_guidance_become_hiking():
@@ -55,3 +59,31 @@ def test_manual_routes_are_unpublished_not_deleted(monkeypatch):
         assert connection.execute(text(
             "SELECT external_id FROM activities WHERE is_active = 1"
         )).scalar_one() == "existing"
+
+
+def test_lookup_failure_does_not_invent_or_erase_routes():
+    class Sync(TourismSync):
+        async def _get(self, url, params):
+            raise httpx.ConnectError("upstream unavailable")
+
+    raw = {"contentid": "1", "contenttypeid": "12", "title": "테스트산", "addr1": "강원"}
+    asyncio.run(Sync(None, None, "test")._fill_hiking_routes([raw], {}))
+    values = tourism_item(raw)
+    assert values["category"] == "tour"
+    assert values["source_metadata"]["hiking_lookup_failed"]
+    existing = SimpleNamespace(
+        external_id="1", source_metadata={"hiking_routes": [{"infotext": "기존 API 경로"}]},
+        sport_name="hiking", category="sports", summary="기존 API 경로",
+    )
+
+    class Session:
+        async def scalars(self, query):
+            return [existing]
+
+        async def flush(self):
+            pass
+
+    from datetime import datetime
+    asyncio.run(ActivityRepository(Session()).sync_source("tourapi", [values], datetime.now()))
+    assert existing.sport_name == "hiking" and existing.summary == "기존 API 경로"
+    assert existing.source_metadata["hiking_routes"]
