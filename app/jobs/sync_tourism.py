@@ -348,6 +348,8 @@ def tourism_item(row: dict, category: str = "tour") -> dict:
         source_metadata["hiking_routes"] = row["api_hiking_routes"]
         source_metadata["hiking_source"] = f"{KOR_BASE}/detailInfo2"
         source_metadata["facility_type"] = "등산로 안내가 있는 산·국립공원"
+    if row.get("hiking_lookup_failed"):
+        source_metadata["hiking_lookup_failed"] = True
     return {
         "external_id": str(row["contentid"]),
         "category": "sports" if sport_name else category,
@@ -617,19 +619,24 @@ class TourismSync:
 
     async def _fill_hiking_routes(self, rows: list[dict], common: dict) -> None:
         """Promote only named API places with explicit upstream hiking guidance."""
-        semaphore = asyncio.Semaphore(8)
+        semaphore = asyncio.Semaphore(1)
 
         async def fill(row: dict) -> None:
             if (str(row.get("contenttypeid")) != "12"
                     or "산" not in str(row.get("title") or "")
                     or not row.get("addr1") or not row.get("contentid")):
                 return
-            async with semaphore:
-                payload = await self._get(f"{KOR_BASE}/detailInfo2", common | {
-                    "contentId": str(row["contentid"]), "contentTypeId": "12",
-                    "numOfRows": 100, "pageNo": 1,
-                })
-            details, _ = items(payload)
+            try:
+                async with semaphore:
+                    payload = await self._get(f"{KOR_BASE}/detailInfo2", common | {
+                        "contentId": str(row["contentid"]), "contentTypeId": "12",
+                        "numOfRows": 100, "pageNo": 1,
+                    })
+                    await asyncio.sleep(0.2)
+                details, _ = items(payload)
+            except (httpx.HTTPError, KeyError, TypeError, ValueError):
+                row["hiking_lookup_failed"] = True
+                return
             routes = [
                 {"infoname": str(detail["infoname"]), "infotext": str(detail["infotext"])}
                 for detail in details
