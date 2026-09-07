@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from app.config.database import get_session
+from app.config import admins
 from app.deps.auth import LoginUser
 from app.exceptions import ApiError
 from app.models import SubmissionStatus
@@ -103,14 +104,15 @@ class StampSubmissionService:
         like_count, comment_count, liked_by_me = engagement_values
         return {
             "id": row.id,
-            "proof_url": self.storage.proof_url(row.object_key),
+            "is_demo": bool(getattr(row, "is_demo", False)),
+            "proof_url": "https://sportspassport.kr/community-demo.svg" if getattr(row, "is_demo", False) else self.storage.proof_url(row.object_key),
             "caption": row.feed_caption,
             "author_id": getattr(author, "id", 0),
             "author_name": getattr(author, "nickname", None) or "강원 스포츠 탐험가",
             "author_profile_image_url": self._profile_url(author),
-            "place_name": activity.place_name,
-            "sigun": activity.sigun,
-            "sport_name": activity.sport_name,
+            "place_name": getattr(activity, "place_name", None),
+            "sigun": getattr(activity, "sigun", None),
+            "sport_name": getattr(activity, "sport_name", None),
             "approved_at": row.reviewed_at,
             "like_count": like_count,
             "comment_count": comment_count,
@@ -122,14 +124,19 @@ class StampSubmissionService:
         *,
         user: LoginUser | None = None,
         owner_user_id: int | None = None,
+        following_only: bool = False,
         offset: int = 0,
         limit: int = 20,
     ):
+        extra_filters = {"following_only": True} if following_only else {}
+        if following_only and not user:
+            raise ApiError(401, "unauthorized", "Login required for following feed.")
         rows = await self.repository.list_feed(
             owner_user_id=owner_user_id,
             viewer_user_id=user.id if user else None,
             offset=offset,
             limit=limit,
+            **extra_filters,
         )
         result = []
         for item in rows:
@@ -146,6 +153,23 @@ class StampSubmissionService:
                 )
             )
         return result
+
+    async def community_profile(self, user_id: int, viewer: LoginUser | None = None):
+        result = await self.repository.public_profile(user_id, viewer.id if viewer else None)
+        if result is None:
+            raise ApiError(404, "not_found", "User not found.")
+        author, followers, following, followed = result
+        return {"id": author.id, "name": author.nickname or "강원 스포츠 탐험가",
+                "profile_image_url": self._profile_url(author),
+                "follower_count": followers, "following_count": following,
+                "followed_by_me": followed, "is_operator": author.email.lower() in admins()}
+
+    async def follow_user(self, user_id: int, actor: LoginUser, *, following: bool):
+        if user_id == actor.id:
+            raise ApiError(400, "bad_request", "Cannot follow yourself.")
+        await self.community_profile(user_id, actor)
+        await self.repository.set_follow(actor.id, user_id, following)
+        return await self.community_profile(user_id, actor)
 
     async def update_like(self, item_id: int, user: LoginUser, *, liked: bool):
         if not await self.repository.visible_feed_item(item_id):

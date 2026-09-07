@@ -1172,6 +1172,7 @@ def test_stamp_submission_community_feed_is_approved_opt_in_and_anonymous():
     )
 
     assert public[0] == {
+        "is_demo": False,
         "id": 12,
         "proof_url": "https://signed.example.com/feed.jpg",
         "caption": "정상에서 만나요!",

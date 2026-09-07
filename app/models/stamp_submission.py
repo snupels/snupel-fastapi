@@ -18,13 +18,17 @@ class StampSubmission(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True, autoincrement=True)
-    passport_id: Mapped[int] = mapped_column(
+    passport_id: Mapped[int | None] = mapped_column(
         BIGINT(unsigned=True), ForeignKey("passports.id", ondelete="CASCADE")
     )
-    stamp_id: Mapped[int] = mapped_column(
+    stamp_id: Mapped[int | None] = mapped_column(
         BIGINT(unsigned=True), ForeignKey("stamps.id", ondelete="CASCADE")
     )
     object_key: Mapped[str] = mapped_column(String(500))
+    author_id: Mapped[int | None] = mapped_column(
+        BIGINT(unsigned=True), ForeignKey("users.id", ondelete="CASCADE")
+    )
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     share_to_feed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     feed_caption: Mapped[str | None] = mapped_column(String(300))
     status: Mapped[SubmissionStatus] = mapped_column(
@@ -50,6 +54,17 @@ class FeedLike(TimestampMixin, Base):
     )
     user_id: Mapped[int] = mapped_column(
         BIGINT(unsigned=True), ForeignKey("users.id", ondelete="CASCADE")
+    )
+
+
+class UserFollow(TimestampMixin, Base):
+    __tablename__ = "user_follows"
+    follower_id: Mapped[int] = mapped_column(
+        BIGINT(unsigned=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    followed_id: Mapped[int] = mapped_column(
+        BIGINT(unsigned=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True,
+        index=True,
     )
 
 

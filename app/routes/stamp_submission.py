@@ -19,6 +19,7 @@ from app.schemas.stamp_submission import (
     UploadUrlResponse,
 )
 from app.services.stamp_submission import get_stamp_submission_service
+from app.schemas.community_profile import CommunityProfileResponse
 
 router = APIRouter(tags=["Stamp submissions"])
 
@@ -73,11 +74,28 @@ async def update_feed_visibility(
 async def community_feed(
     pagination: Annotated[Pagination, Depends()],
     actor: LoginUser | None = Depends(optional_user),
+    following: bool = False,
     service=Depends(get_stamp_submission_service),
 ):
     return await service.list_feed(
-        user=actor, offset=pagination.offset, limit=pagination.size
+        user=actor, offset=pagination.offset, limit=pagination.size,
+        **({"following_only": True} if following else {}),
     )
+
+
+@router.get("/api/community-profiles/{user_id}", response_model=CommunityProfileResponse)
+async def community_profile(user_id: int = Path(gt=0), actor: LoginUser | None = Depends(optional_user), service=Depends(get_stamp_submission_service)):
+    return await service.community_profile(user_id, actor)
+
+
+@router.post("/api/community-profiles/{user_id}/follow", response_model=CommunityProfileResponse)
+async def follow_profile(user_id: int = Path(gt=0), actor: LoginUser = Depends(require_user), service=Depends(get_stamp_submission_service)):
+    return await service.follow_user(user_id, actor, following=True)
+
+
+@router.delete("/api/community-profiles/{user_id}/follow", response_model=CommunityProfileResponse)
+async def unfollow_profile(user_id: int = Path(gt=0), actor: LoginUser = Depends(require_user), service=Depends(get_stamp_submission_service)):
+    return await service.follow_user(user_id, actor, following=False)
 
 
 @router.get("/api/community-feed/me", response_model=list[CommunityFeedResponse])
