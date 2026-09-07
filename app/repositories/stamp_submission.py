@@ -139,6 +139,8 @@ class StampSubmissionRepository:
         owner_user_id: int | None = None,
         viewer_user_id: int | None = None,
         following_only: bool = False,
+        liked_only: bool = False,
+        item_id: int | None = None,
         offset: int = 0,
         limit: int = 20,
     ):
@@ -182,6 +184,13 @@ class StampSubmissionRepository:
         )
         if owner_user_id is not None:
             query = query.where(User.id == owner_user_id)
+        if item_id is not None:
+            query = query.where(StampSubmission.id == item_id)
+        if liked_only:
+            query = query.where(exists().where(
+                FeedLike.submission_id == StampSubmission.id,
+                FeedLike.user_id == viewer_user_id,
+            ))
         if following_only:
             query = query.where(exists().where(
                 UserFollow.follower_id == viewer_user_id, UserFollow.followed_id == User.id
