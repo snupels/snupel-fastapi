@@ -15,6 +15,7 @@ from app.models import (
     StampSubmission,
     SubmissionStatus,
     User,
+    UserFollow,
 )
 
 
@@ -137,6 +138,7 @@ class StampSubmissionRepository:
         *,
         owner_user_id: int | None = None,
         viewer_user_id: int | None = None,
+        following_only: bool = False,
         offset: int = 0,
         limit: int = 20,
     ):
@@ -169,17 +171,21 @@ class StampSubmissionRepository:
                 comment_count.label("comment_count"),
                 liked_by_me.label("liked_by_me") if viewer_user_id is not None else liked_by_me,
             )
-            .join(Stamp, Stamp.id == StampSubmission.stamp_id)
-            .join(Activity, Activity.id == Stamp.activity_id)
-            .join(Passport, Passport.id == StampSubmission.passport_id)
-            .join(User, User.id == Passport.user_id)
+            .outerjoin(Stamp, Stamp.id == StampSubmission.stamp_id)
+            .outerjoin(Activity, Activity.id == Stamp.activity_id)
+            .outerjoin(Passport, Passport.id == StampSubmission.passport_id)
+            .join(User, User.id == func.coalesce(Passport.user_id, StampSubmission.author_id))
             .where(
                 StampSubmission.status == SubmissionStatus.approved,
                 StampSubmission.share_to_feed.is_(True),
             )
         )
         if owner_user_id is not None:
-            query = query.where(Passport.user_id == owner_user_id)
+            query = query.where(User.id == owner_user_id)
+        if following_only:
+            query = query.where(exists().where(
+                UserFollow.follower_id == viewer_user_id, UserFollow.followed_id == User.id
+            ))
         query = (
             query.order_by(StampSubmission.reviewed_at.desc(), StampSubmission.id.desc())
             .offset(offset)
@@ -195,6 +201,27 @@ class StampSubmissionRepository:
                 StampSubmission.share_to_feed.is_(True),
             )
         )
+
+    async def public_profile(self, user_id: int, viewer_id: int | None):
+        user = await self.session.get(User, user_id)
+        if user is None:
+            return None
+        followers = await self.session.scalar(select(func.count()).select_from(UserFollow).where(UserFollow.followed_id == user_id))
+        following = await self.session.scalar(select(func.count()).select_from(UserFollow).where(UserFollow.follower_id == user_id))
+        followed = bool(await self.session.scalar(select(exists().where(
+            UserFollow.follower_id == viewer_id, UserFollow.followed_id == user_id
+        )))) if viewer_id else False
+        return user, followers, following, followed
+
+    async def set_follow(self, follower_id: int, followed_id: int, following: bool):
+        # Serialize actions by actor so repeated/concurrent requests remain idempotent.
+        await self.session.scalar(select(User.id).where(User.id == follower_id).with_for_update())
+        row = await self.session.get(UserFollow, (follower_id, followed_id))
+        if following and row is None:
+            self.session.add(UserFollow(follower_id=follower_id, followed_id=followed_id))
+        elif not following and row is not None:
+            await self.session.delete(row)
+        await self.session.flush()
 
     async def feed_engagement(self, submission_id: int, user_id: int | None = None):
         like_count = await self.session.scalar(
@@ -216,6 +243,7 @@ class StampSubmissionRepository:
         return int(like_count or 0), int(comment_count or 0), liked
 
     async def add_like(self, submission_id: int, user_id: int):
+        await self.session.scalar(select(User.id).where(User.id == user_id).with_for_update())
         existing = await self.session.scalar(
             select(FeedLike).where(
                 FeedLike.submission_id == submission_id, FeedLike.user_id == user_id

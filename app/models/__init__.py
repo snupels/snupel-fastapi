@@ -15,6 +15,7 @@ from .stamp_catalog import StampCatalog as StampCatalog
 from .stamp_submission import StampSubmission as StampSubmission
 from .stamp_submission import FeedComment as FeedComment
 from .stamp_submission import FeedLike as FeedLike
+from .stamp_submission import UserFollow as UserFollow
 from .user import SocialAccount as SocialAccount
 from .user import PasswordResetCode as PasswordResetCode
 from .user import User as User

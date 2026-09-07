@@ -94,6 +94,7 @@ class FeedVisibilityUpdate(Dto):
 
 
 class CommunityFeedResponse(OrmDto):
+    is_demo: bool = Field(default=False, serialization_alias="isDemo")
     id: int = Field(gt=0)
     proof_url: str | None = Field(serialization_alias="proofUrl")
     caption: str | None
