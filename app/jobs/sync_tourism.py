@@ -273,6 +273,8 @@ def sigun(value) -> str | None:
 
 
 def tourism_sport(row: dict) -> str | None:
+    if row.get("api_hiking_routes") and row.get("title") and row.get("addr1"):
+        return "hiking"
     if str(row.get("contenttypeid") or "") != LEPORTS_CONTENT_TYPE:
         return None
     code = str(row.get("cat3") or "").upper()
@@ -324,6 +326,12 @@ def tourism_image(row: dict) -> str | None:
     )
 
 
+def tourism_plain_text(value: str) -> str:
+    return unescape(re.sub(r"<[^>]+>", " ", re.sub(
+        r"<br\s*/?>", "\n", value, flags=re.I
+    ))).strip()
+
+
 def tourism_item(row: dict, category: str = "tour") -> dict:
     sport_name = tourism_sport(row) if category == "tour" else None
     sport_categories = olympic_sport_categories(row) if category == "tour" else []
@@ -336,6 +344,10 @@ def tourism_item(row: dict, category: str = "tour") -> dict:
     }
     if sport_categories:
         source_metadata["sport_categories"] = sport_categories
+    if row.get("api_hiking_routes"):
+        source_metadata["hiking_routes"] = row["api_hiking_routes"]
+        source_metadata["hiking_source"] = f"{KOR_BASE}/detailInfo2"
+        source_metadata["facility_type"] = "등산로 안내가 있는 산·국립공원"
     return {
         "external_id": str(row["contentid"]),
         "category": "sports" if sport_name else category,
@@ -346,7 +358,10 @@ def tourism_item(row: dict, category: str = "tour") -> dict:
         "sigun": sigun(row.get("addr1")),
         "latitude": number(row.get("mapy")),
         "longitude": number(row.get("mapx")),
-        "summary": None,
+        "summary": "\n\n".join(
+            f"{detail['infoname']}\n{tourism_plain_text(detail['infotext'])}"
+            for detail in row.get("api_hiking_routes", [])
+        ) or None,
         "address": " ".join(filter(None, (row.get("addr1"), row.get("addr2")))) or None,
         "source_url": OFFICIAL_SPORT_URLS.get(str(row["contentid"]))
         or homepage_url(row.get("homepage")),
@@ -600,6 +615,33 @@ class TourismSync:
         await asyncio.gather(*(fill(row) for row in rows))
         return rows
 
+    async def _fill_hiking_routes(self, rows: list[dict], common: dict) -> None:
+        """Promote only named API places with explicit upstream hiking guidance."""
+        semaphore = asyncio.Semaphore(8)
+
+        async def fill(row: dict) -> None:
+            if (str(row.get("contenttypeid")) != "12"
+                    or "산" not in str(row.get("title") or "")
+                    or not row.get("addr1") or not row.get("contentid")):
+                return
+            async with semaphore:
+                payload = await self._get(f"{KOR_BASE}/detailInfo2", common | {
+                    "contentId": str(row["contentid"]), "contentTypeId": "12",
+                    "numOfRows": 100, "pageNo": 1,
+                })
+            details, _ = items(payload)
+            routes = [
+                {"infoname": str(detail["infoname"]), "infotext": str(detail["infotext"])}
+                for detail in details
+                if "등산로" in str(detail.get("infoname") or "")
+                and tourism_plain_text(str(detail.get("infotext") or ""))
+                not in {"", "없음", "-", "해당없음"}
+            ]
+            if routes:
+                row["api_hiking_routes"] = routes
+
+        await asyncio.gather(*(fill(row) for row in rows))
+
     async def _fill_locations(self, rows: list[dict]) -> list[dict]:
         kakao_key = os.getenv("KAKAO_CLIENT_ID")
         if not kakao_key:
@@ -647,6 +689,7 @@ class TourismSync:
             for row in places
             if str(row.get("contentid")) not in EXCLUDED_TOURISM_CONTENT_IDS
         ]
+        await self._fill_hiking_routes(places, common)
         await self._fill_homepages(places, common)
         festivals = await self._pages(
             f"{KOR_BASE}/searchFestival2",
