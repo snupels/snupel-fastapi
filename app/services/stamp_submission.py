@@ -16,6 +16,12 @@ class StampSubmissionService:
         self.repository = repository
         self.storage = storage
 
+    async def _passport_id(self, requested_id: int | None, user_id: int) -> int:
+        passport_id = requested_id or await self.repository.passport_id(user_id)
+        if passport_id is None:
+            raise ApiError(404, "not_found", "Passport not found.")
+        return passport_id
+
     async def _target(
         self, passport_id: int, stamp_id: int, user_id: int, *, lock: bool = False
     ) -> None:
@@ -29,19 +35,21 @@ class StampSubmissionService:
             raise ApiError(409, "conflict", "A proof is already pending.")
 
     async def upload_url(self, body, user: LoginUser):
-        await self._target(body.passport_id, body.stamp_id, user.id)
-        return self.storage.upload(body.passport_id, body.stamp_id, body.content_type)
+        passport_id = await self._passport_id(body.passport_id, user.id)
+        await self._target(passport_id, body.stamp_id, user.id)
+        return self.storage.upload(passport_id, body.stamp_id, body.content_type)
 
     async def create(self, body, user: LoginUser):
-        await self._target(body.passport_id, body.stamp_id, user.id)
-        prefix = f"proofs/{body.passport_id}/{body.stamp_id}/"
+        passport_id = await self._passport_id(body.passport_id, user.id)
+        await self._target(passport_id, body.stamp_id, user.id)
+        prefix = f"proofs/{passport_id}/{body.stamp_id}/"
         if not body.object_key.startswith(prefix):
             raise ApiError(400, "bad_request", "Invalid proof object key.")
         await run_in_threadpool(self.storage.validate, body.object_key)
-        await self._target(body.passport_id, body.stamp_id, user.id, lock=True)
+        await self._target(passport_id, body.stamp_id, user.id, lock=True)
         return self._response(
             await self.repository.create(
-                body.passport_id,
+                passport_id,
                 body.stamp_id,
                 body.object_key,
                 share_to_feed=body.share_to_feed,

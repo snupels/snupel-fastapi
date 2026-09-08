@@ -26,6 +26,11 @@ class StampSubmissionRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def passport_id(self, user_id: int) -> int | None:
+        return await self.session.scalar(
+            select(Passport.id).where(Passport.user_id == user_id)
+        )
+
     async def valid_target(
         self, passport_id: int, stamp_id: int, user_id: int, *, lock: bool = False
     ) -> bool:

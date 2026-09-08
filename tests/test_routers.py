@@ -474,13 +474,12 @@ def test_stamp_submission_routes_are_private_and_admin_review_has_activity():
         admin = client.get("/api/admin/stamp-submissions", headers=admin_headers)
         upload = client.post(
             "/api/stamp-submissions/upload-url",
-            json={"passportId": 4, "stampId": 2, "contentType": "image/jpeg"},
+            json={"stampId": 2, "contentType": "image/jpeg"},
             headers=user_headers,
         )
         created = client.post(
             "/api/stamp-submissions",
             json={
-                "passportId": 4,
                 "stampId": 2,
                 "objectKey": "proofs/4/2/x.jpg",
             },

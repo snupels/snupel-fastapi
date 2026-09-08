@@ -7,8 +7,8 @@ from app.schemas.common import Dto, OrmDto, TimestampedResponse
 
 
 class UploadUrlRequest(Dto):
-    passport_id: int = Field(
-        gt=0, validation_alias=AliasChoices("passportId", "passport_id")
+    passport_id: int | None = Field(
+        default=None, gt=0, validation_alias=AliasChoices("passportId", "passport_id")
     )
     stamp_id: int = Field(gt=0, validation_alias=AliasChoices("stampId", "stamp_id"))
     content_type: str = Field(
@@ -24,8 +24,8 @@ class UploadUrlResponse(Dto):
 
 
 class StampSubmissionCreate(Dto):
-    passport_id: int = Field(
-        gt=0, validation_alias=AliasChoices("passportId", "passport_id")
+    passport_id: int | None = Field(
+        default=None, gt=0, validation_alias=AliasChoices("passportId", "passport_id")
     )
     stamp_id: int = Field(gt=0, validation_alias=AliasChoices("stampId", "stamp_id"))
     object_key: str = Field(
