@@ -39,6 +39,9 @@ class AuthService:
             email=user.email,
             nickname=getattr(user, "nickname", None),
             phone_number=getattr(user, "phone_number", None),
+            postal_code=getattr(user, "postal_code", None),
+            address=getattr(user, "address", None),
+            address_detail=getattr(user, "address_detail", None),
             profile_image_url=profile_url,
             birth_date=getattr(user, "birth_date", None),
             gender=getattr(user, "gender", None),
@@ -75,6 +78,9 @@ class AuthService:
                 gender=body.gender,
                 nickname=body.nickname.strip(),
                 phone_number=body.phone_number,
+                postal_code=body.postal_code,
+                address=body.address,
+                address_detail=body.address_detail,
                 terms_agreed_at=agreed_at,
                 privacy_agreed_at=agreed_at,
                 marketing_email_agreed=body.agree_marketing_email,
@@ -158,7 +164,10 @@ class AuthService:
             await run_in_threadpool(self.storage.validate, body.profile_image_key)
         values = {
             field: getattr(body, field)
-            for field in ("nickname", "phone_number", "profile_image_key", "birth_date", "gender")
+            for field in (
+                "nickname", "phone_number", "profile_image_key", "birth_date", "gender",
+                "postal_code", "address", "address_detail",
+            )
             if field in body.model_fields_set
         }
         now = datetime.now()
