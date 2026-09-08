@@ -271,7 +271,7 @@ class RecommendationService:
                         f"{activity.place_name or '선택 장소'}: "
                         f"{theme} 테마와 가까운 이동 동선을 고려했습니다."
                     ),
-                    "estimated_minutes": minutes,
+                    "estimated_minutes": self._minutes(activity),
                 }
             )
             total += minutes
@@ -302,7 +302,7 @@ class RecommendationService:
                 {
                     "activity_id": item_id,
                     "reason": reason,
-                    "estimated_minutes": minutes,
+                    "estimated_minutes": self._minutes(activity),
                 }
             )
             seen.add(item_id)
@@ -329,7 +329,14 @@ class RecommendationService:
             min(self._theme_relevance(activity, body.theme.value), 1) for activity in selected
         ) / len(selected)
         time_fit = min(
-            sum(stop["estimated_minutes"] for stop in stops) / body.available_minutes,
+            (
+                sum(stop["estimated_minutes"] for stop in stops)
+                + sum(
+                    self._travel_minutes(first, second) or 0
+                    for first, second in zip(selected, selected[1:])
+                )
+            )
+            / body.available_minutes,
             1,
         )
         legs = [self._distance_km(first, second) for first, second in zip(selected, selected[1:])]
@@ -342,9 +349,58 @@ class RecommendationService:
             15 * location + 20 * sport + 20 * theme + 15 * time_fit + 20 * route + 10 * diversity
         )
 
-    def _result(self, stops, candidates, body, *, used_ai: bool) -> dict:
+    @staticmethod
+    def _fallback_copy(body) -> tuple[str, str]:
+        theme = THEME_LABELS[body.theme.value]
+        area = body.sigun or body.region
+        return (
+            f"{area} {theme} 추천 코스",
+            f"{theme} 테마에 맞춘 장소와 이동 동선을 고려한 일정입니다.",
+        )
+
+    def _result(
+        self,
+        stops,
+        candidates,
+        body,
+        *,
+        used_ai: bool,
+        title: str | None = None,
+        description: str | None = None,
+    ) -> dict:
+        by_id = {activity.id: activity for activity in candidates}
+        selected = [by_id[stop["activity_id"]] for stop in stops]
+        stops = [
+            stop
+            | {
+                "place_name": activity.place_name,
+                "address": getattr(activity, "address", None),
+                "latitude": float(activity.latitude) if activity.latitude is not None else None,
+                "longitude": float(activity.longitude) if activity.longitude is not None else None,
+                "representative_image_url": getattr(activity, "representative_image_url", None),
+            }
+            for stop, activity in zip(stops, selected)
+        ]
+        legs = [
+            {
+                "from_activity_id": first.id,
+                "to_activity_id": second.id,
+                "distance_km": round(self._distance_km(first, second) or 0, 1),
+                "travel_minutes": self._travel_minutes(first, second) or 0,
+            }
+            for first, second in zip(selected, selected[1:])
+        ]
+        activity_minutes = sum(stop["estimated_minutes"] for stop in stops)
+        travel_minutes = sum(leg["travel_minutes"] for leg in legs)
+        fallback_title, fallback_description = self._fallback_copy(body)
         return {
+            "title": title or fallback_title,
+            "description": description or fallback_description,
+            "activity_minutes": activity_minutes,
+            "travel_minutes": travel_minutes,
+            "total_estimated_minutes": activity_minutes + travel_minutes,
             "stops": stops,
+            "legs": legs,
             "used_ai": used_ai,
             "match_score": self._match_score(stops, candidates, body),
         }
@@ -436,7 +492,8 @@ class RecommendationService:
                         "Select an ordered, geographically coherent course using only candidate IDs. "
                         "Choose five varied stops whenever five can fit; otherwise choose the greatest "
                         "feasible number. Include the requested sport when provided, respect the time "
-                        "limit including travel, and write specific reasons in Korean. "
+                        "limit including travel, and write a Korean course title, description, and "
+                        "specific reasons. "
                         "For every consecutive pair, the next ID must exist in the previous candidate's "
                         "travelMinutesByCandidateId; add that travel time to candidate minutes."
                     ),
@@ -466,6 +523,8 @@ class RecommendationService:
                     "schema": {
                         "type": "object",
                         "properties": {
+                            "title": {"type": "string"},
+                            "description": {"type": "string"},
                             "stops": {
                                 "type": "array",
                                 "items": {
@@ -479,7 +538,7 @@ class RecommendationService:
                                 },
                             }
                         },
-                        "required": ["stops"],
+                        "required": ["title", "description", "stops"],
                         "additionalProperties": False,
                     },
                 },
@@ -502,9 +561,15 @@ class RecommendationService:
                     content = response.json()["choices"][0]["message"]["content"]
                     if not isinstance(content, str):
                         raise ValueError("OpenRouter returned no JSON content")
-                    generated = json.loads(content)["stops"]
-            stops = self._ai_stops(generated, candidates, body)
-            return self._result(stops, candidates, body, used_ai=True)
+                    generated = json.loads(content)
+            title = str(generated["title"]).strip()
+            description = str(generated["description"]).strip()
+            if not title or not description:
+                raise ValueError("AI course title or description is empty")
+            stops = self._ai_stops(generated["stops"], candidates, body)
+            return self._result(
+                stops, candidates, body, used_ai=True, title=title, description=description
+            )
         except (
             TimeoutError,
             httpx.HTTPError,

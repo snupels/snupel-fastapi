@@ -38,7 +38,11 @@ from app.repositories.activity import ActivityRepository
 from app.repositories.course import CourseRepository
 from app.repositories.stamp_submission import StampSubmissionRepository
 from app.schemas.course import CourseCreate, CoursePatch
-from app.schemas.recommendation import CourseRecommendationRequest, MissionGenerationRequest
+from app.schemas.recommendation import (
+    CourseRecommendationRequest,
+    CourseRecommendationResponse,
+    MissionGenerationRequest,
+)
 from app.schemas.activity import ActivityCreate, ActivityPatch
 from app.schemas.stamp_submission import RejectSubmission, StampSubmissionCreate
 from app.services.activity import ActivityService
@@ -682,6 +686,8 @@ def test_recommendation_uses_only_safe_candidates_and_validates_ai(monkeypatch, 
                         "message": {
                             "content": json.dumps(
                                 {
+                                    "title": "설악산 힐링 코스",
+                                    "description": "등산과 휴식을 잇는 코스입니다.",
                                     "stops": [
                                         {
                                             "activityId": 999 if self.invalid else 4,
@@ -716,11 +722,24 @@ def test_recommendation_uses_only_safe_candidates_and_validates_ai(monkeypatch, 
     )
     result = asyncio.run(RecommendationService(Repository(), Weather()).recommend(body))
     prompt = captured["messages"][1]["content"]
-    assert result == {
-        "stops": [{"activity_id": 4, "reason": "fit", "estimated_minutes": 90}],
-        "used_ai": True,
-        "match_score": 96,
-    }
+    assert result["title"] == "설악산 힐링 코스"
+    assert result["description"] == "등산과 휴식을 잇는 코스입니다."
+    assert result["activity_minutes"] == 90
+    assert result["travel_minutes"] == 0
+    assert result["total_estimated_minutes"] == 90
+    assert result["stops"] == [{
+        "activity_id": 4,
+        "place_name": "설악산",
+        "address": None,
+        "latitude": 38.1,
+        "longitude": 128.4,
+        "representative_image_url": None,
+        "reason": "fit",
+        "estimated_minutes": 90,
+    }]
+    assert result["legs"] == []
+    assert result["used_ai"] is True
+    assert result["match_score"] == 96
     assert "latitude" not in prompt and "longitude" not in prompt and "email" not in prompt
     assert "속초시" in prompt and "설악산의 대표 등산 코스" in prompt
     assert '"matchScore": 96' in prompt
@@ -738,6 +757,10 @@ def test_recommendation_uses_only_safe_candidates_and_validates_ai(monkeypatch, 
     assert fallback["used_ai"] is False
     assert fallback["match_score"] == 96
     assert fallback["stops"][0]["activity_id"] == 4
+    assert result.keys() == fallback.keys()
+    assert result["stops"][0].keys() == fallback["stops"][0].keys()
+    assert CourseRecommendationResponse.model_validate(result)
+    assert CourseRecommendationResponse.model_validate(fallback)
     assert "OpenRouter recommendation fallback" in caplog.text
 
 
@@ -817,8 +840,11 @@ def test_recommendation_keeps_stops_close_and_counts_travel(monkeypatch):
     result = asyncio.run(RecommendationService(Repository(), object()).recommend(body))
 
     assert [stop["activity_id"] for stop in result["stops"]] == [1, 2]
-    assert sum(stop["estimated_minutes"] for stop in result["stops"]) <= 180
-    assert result["stops"][1]["estimated_minutes"] > 45
+    assert result["activity_minutes"] + result["travel_minutes"] <= 180
+    assert result["total_estimated_minutes"] == (
+        result["activity_minutes"] + result["travel_minutes"]
+    )
+    assert result["legs"][0]["travel_minutes"] > 0
     assert result["used_ai"] is False
 
 
