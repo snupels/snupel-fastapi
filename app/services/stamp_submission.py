@@ -9,6 +9,7 @@ from app.exceptions import ApiError
 from app.models import SubmissionStatus
 from app.repositories.stamp_submission import StampSubmissionRepository
 from app.services.storage import ProofStorage, get_proof_storage
+from app.services.badge_rules import earned_badge_rules
 
 
 class StampSubmissionService:
@@ -257,16 +258,8 @@ class StampSubmissionService:
             else await self.repository.approve(row, reviewer.id)
         )
         if reason is None:
-            progress = await self.repository.badge_progress(reviewed.passport_id)
-            rules = set()
-            if progress["missions"] >= 1:
-                rules.add("first_mission")
-            if progress["mountains"] >= 1:
-                rules.add("first_mountain")
-            if progress["regions"] >= 3:
-                rules.add("three_regions")
-            if progress["sports"] >= 3:
-                rules.add("three_sports")
+            facts = await self.repository.completed_mission_facts(reviewed.passport_id)
+            rules = earned_badge_rules(facts)
             await self.repository.award_badges(reviewed.passport_id, rules)
         return self._response(reviewed)
 
