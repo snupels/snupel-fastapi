@@ -240,6 +240,24 @@ class ActivityRepository(CrudRepository):
                     "summary": row.summary,
                     "source_metadata": previous_metadata | metadata,
                 }
+            if (source == "tourapi" and values["category"] == "event"
+                    and previous_metadata.get("curationSource") == "official_organizer"):
+                # Organizer-verified participation notes supplement the API;
+                # refreshing upstream fields must not erase these annotations.
+                curated = {
+                    key: previous_metadata[key]
+                    for key in ("participation", "eventType", "officialSource", "curationSource")
+                    if key in previous_metadata
+                }
+                previous_image = getattr(row, "representative_image_url", None)
+                if values.get("representative_image_url", previous_image) == previous_image:
+                    curated |= {
+                        key: previous_metadata[key]
+                        for key in ("imageCaption", "imageType")
+                        if key in previous_metadata
+                    }
+                if curated:
+                    values = values | {"source_metadata": metadata | curated}
             values = values | {
                 "source": source,
                 "last_synced_at": synced_at,
