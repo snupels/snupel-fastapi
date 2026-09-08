@@ -131,13 +131,28 @@ def test_health_and_openapi():
     with TestClient(app) as client:
         assert client.get("/api/health").json() == {"status": "ok"}
         assert client.get("/api/docs").status_code == 200
+        activity_category = client.get("/api/docs").json()["components"]["schemas"][
+            "ActivityCategory"
+        ]
+
+    assert activity_category["enum"] == ["tour", "sports", "event"]
 
 
 def test_course_recommendations_are_available_to_logged_in_users():
     class RecommendationService:
         async def recommend(self, _body, *, user_id):
             assert user_id == 7
-            return {"stops": [], "used_ai": False, "match_score": 0}
+            return {
+                "title": "강원특별자치도 힐링 추천 코스",
+                "description": "힐링 테마에 맞춘 장소와 이동 동선을 고려한 일정입니다.",
+                "activity_minutes": 0,
+                "travel_minutes": 0,
+                "total_estimated_minutes": 0,
+                "stops": [],
+                "legs": [],
+                "used_ai": False,
+                "match_score": 0,
+            }
 
     app.dependency_overrides[get_recommendation_service] = RecommendationService
     headers = {"Authorization": f"Bearer {token('user@example.com')}"}
@@ -148,7 +163,17 @@ def test_course_recommendations_are_available_to_logged_in_users():
         response = client.post("/api/course-recommendations", json=body, headers=headers)
 
     assert response.status_code == 200
-    assert response.json() == {"stops": [], "usedAi": False, "matchScore": 0}
+    assert response.json() == {
+        "title": "강원특별자치도 힐링 추천 코스",
+        "description": "힐링 테마에 맞춘 장소와 이동 동선을 고려한 일정입니다.",
+        "activityMinutes": 0,
+        "travelMinutes": 0,
+        "totalEstimatedMinutes": 0,
+        "stops": [],
+        "legs": [],
+        "usedAi": False,
+        "matchScore": 0,
+    }
 
 
 def test_only_admin_can_generate_ai_mission_drafts():
@@ -170,7 +195,22 @@ def test_only_admin_can_generate_ai_mission_drafts():
                     "created_at": NOW,
                     "updated_at": NOW,
                 },
-                "stops": [{"activity_id": 4, "reason": "fit", "estimated_minutes": 90}],
+                "title": "설악산 힐링 코스",
+                "description": "등산과 휴식을 잇는 코스입니다.",
+                "activity_minutes": 90,
+                "travel_minutes": 0,
+                "total_estimated_minutes": 90,
+                "stops": [{
+                    "activity_id": 4,
+                    "place_name": "설악산",
+                    "address": None,
+                    "latitude": 38.1,
+                    "longitude": 128.4,
+                    "representative_image_url": None,
+                    "reason": "fit",
+                    "estimated_minutes": 90,
+                }],
+                "legs": [],
                 "used_ai": True,
                 "match_score": 96,
             }
