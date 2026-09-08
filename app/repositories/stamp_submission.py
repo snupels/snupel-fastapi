@@ -341,33 +341,68 @@ class StampSubmissionRepository:
         await self.session.refresh(row)
         return row
 
-    async def badge_progress(self, passport_id: int):
-        row = (
+    async def completed_mission_facts(self, passport_id: int):
+        # Collected stamps can be admin-issued and are not proof of completing a
+        # mission. Only reviewed photo submissions count; retries count once.
+        approved = (
+            select(StampSubmission.stamp_id)
+            .where(
+                StampSubmission.passport_id == passport_id,
+                StampSubmission.status == SubmissionStatus.approved,
+                StampSubmission.is_demo.is_(False),
+            )
+            .distinct()
+            .subquery()
+        )
+        # Submissions currently identify a stamp, not a course. Do not turn one
+        # photo into multiple mission completions when a stamp is ambiguously
+        # assigned to more than one published course. Drafts are never missions.
+        assignment = (
+            select(CourseStamp.stamp_id, func.count(func.distinct(Course.id)).label("courses"))
+            .join(Course, Course.id == CourseStamp.course_id)
+            .where(Course.is_published.is_(True))
+            .group_by(CourseStamp.stamp_id)
+            .subquery()
+        )
+        completed = (
+            select(Course.id.label("course_id"))
+            .join(CourseStamp, CourseStamp.course_id == Course.id)
+            .join(assignment, assignment.c.stamp_id == CourseStamp.stamp_id)
+            .outerjoin(approved, approved.c.stamp_id == CourseStamp.stamp_id)
+            .where(Course.is_published.is_(True))
+            .group_by(Course.id)
+            .having(
+                func.count(func.distinct(CourseStamp.stamp_id)) > 0,
+                func.count(func.distinct(CourseStamp.stamp_id))
+                == func.count(func.distinct(approved.c.stamp_id)),
+                func.max(assignment.c.courses) == 1,
+            )
+            .subquery()
+        )
+        mission_sport = func.lower(func.trim(func.coalesce(
+            StampCatalog.sport_en,
+            func.nullif(Course.sport_name, ""),
+            Activity.sport_name,
+            "",
+        )))
+        return (
             await self.session.execute(
                 select(
-                    func.count(CollectedStamp.id).label("missions"),
-                    func.count(func.distinct(Activity.sigun)).label("regions"),
-                    func.count(func.distinct(Activity.sport_name)).label("sports"),
-                    func.count(
-                        func.distinct(
-                            case(
-                                (
-                                    func.lower(Activity.sport_name).in_(
-                                        ("hiking", "mountain", "등산")
-                                    ),
-                                    Activity.id,
-                                )
-                            )
-                        )
-                    ).label("mountains"),
+                    Course.id.label("course_id"),
+                    Course.title.label("course_title"),
+                    Course.sport_name.label("course_sport"),
+                    case((mission_sport.in_(("mountain", "hiking", "산악", "등산")), 1), else_=0).label("mountain"),
+                    Activity.sport_name.label("activity_sport"),
+                    Activity.source,
+                    Activity.external_id,
                 )
-                .select_from(CollectedStamp)
-                .join(Stamp, Stamp.id == CollectedStamp.stamp_id)
+                .join(completed, completed.c.course_id == Course.id)
+                .join(CourseStamp, CourseStamp.course_id == Course.id)
+                .join(Stamp, Stamp.id == CourseStamp.stamp_id)
                 .join(Activity, Activity.id == Stamp.activity_id)
-                .where(CollectedStamp.passport_id == passport_id)
+                .outerjoin(StampCatalog, StampCatalog.id == Stamp.stamp_catalog_id)
             )
-        ).mappings().one()
-        return {key: int(row[key] or 0) for key in ("missions", "regions", "sports", "mountains")}
+        ).mappings().all()
 
     async def award_badges(self, passport_id: int, rule_keys: set[str]) -> None:
         if not rule_keys:

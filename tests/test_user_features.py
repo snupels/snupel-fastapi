@@ -89,9 +89,13 @@ def test_submission_approval_awards_all_satisfied_badges_in_same_service_flow():
             value.reviewed_at = NOW
             return value
 
-        async def badge_progress(self, passport_id):
+        async def completed_mission_facts(self, passport_id):
             assert passport_id == 2
-            return {"missions": 3, "mountains": 1, "regions": 3, "sports": 3}
+            return [
+                {"course_id": 1, "mountain": True, "activity_sport": "zipline"},
+                {"course_id": 2, "activity_sport": "golf"},
+                {"course_id": 3, "activity_sport": "swimming"},
+            ]
 
         async def award_badges(self, passport_id, rules):
             self.awarded = passport_id, rules
@@ -101,7 +105,7 @@ def test_submission_approval_awards_all_satisfied_badges_in_same_service_flow():
     assert result["status"] == SubmissionStatus.approved
     assert repository.awarded == (
         2,
-        {"first_mission", "first_mountain", "three_regions", "three_sports"},
+        {"first_mission", "first_mountain", "three_missions", "three_sports"},
     )
 
 
