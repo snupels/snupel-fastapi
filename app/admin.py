@@ -164,9 +164,13 @@ class DefaultAdmin(ModelView):
 
 
 class UserAdmin(DefaultAdmin, model=User):
-    column_exclude_list = [User.password_hash]
-    column_details_exclude_list = [User.password_hash]
-    form_excluded_columns = [User.password_hash]
+    # SQLAdmin's inherited '__all__' takes precedence over exclusion lists.
+    column_list = [
+        column.key for column in User.__table__.columns
+        if column.key not in {"password_hash", "postal_code", "address", "address_detail"}
+    ]
+    column_details_exclude_list = [User.password_hash, User.postal_code, User.address, User.address_detail]
+    form_excluded_columns = [User.password_hash, User.postal_code, User.address, User.address_detail]
     column_searchable_list = [User.email]
 
 

@@ -19,6 +19,9 @@ class AuthUser(Dto):
     email: EmailStr
     nickname: str | None = None
     phone_number: str | None = Field(default=None, serialization_alias="phoneNumber")
+    postal_code: str | None = Field(default=None, serialization_alias="postalCode")
+    address: str | None = None
+    address_detail: str | None = Field(default=None, serialization_alias="addressDetail")
     profile_image_url: str | None = Field(default=None, serialization_alias="profileImageUrl")
     birth_date: date | None = Field(default=None, serialization_alias="birthDate")
     gender: Gender | None = None
@@ -38,7 +41,22 @@ class AuthResponse(Dto):
     user: AuthUser
 
 
-class SignupRequest(Dto):
+class MemberAddressInput(Dto):
+    postal_code: str | None = Field(
+        default=None, max_length=5, pattern=r"^[0-9]{5}$", validation_alias="postalCode"
+    )
+    address: str | None = Field(default=None, max_length=500)
+    address_detail: str | None = Field(default=None, max_length=200, validation_alias="addressDetail")
+
+    @field_validator("postal_code", "address", "address_detail", mode="before")
+    @classmethod
+    def clean_address(cls, value):
+        # Normalize before length/pattern validation; omitted PATCH fields still
+        # remain absent from model_fields_set while explicit blanks clear them.
+        return value.strip() or None if isinstance(value, str) else value
+
+
+class SignupRequest(MemberAddressInput):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     birth_date: date | None = Field(default=None, validation_alias="birthDate")
@@ -79,7 +97,7 @@ class OAuthLoginRequest(Dto):
     state: str = Field(min_length=1)
 
 
-class ProfileUpdateRequest(Dto):
+class ProfileUpdateRequest(MemberAddressInput):
     nickname: str | None = Field(default=None, max_length=30)
     phone_number: str | None = Field(
         default=None, min_length=10, max_length=13, validation_alias="phoneNumber"
