@@ -1,9 +1,9 @@
 from datetime import date
 import re
 from enum import Enum
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import AnyHttpUrl, EmailStr, Field, field_validator
+from pydantic import AliasChoices, AnyHttpUrl, BeforeValidator, EmailStr, Field, field_validator
 
 from app.models import Gender
 from app.schemas.common import Dto
@@ -14,9 +14,40 @@ class AuthProvider(str, Enum):
     kakao = "kakao"
 
 
+def normalize_username(value):
+    if not isinstance(value, str):
+        return value
+    value = value.strip()
+    if not value.isascii():
+        raise ValueError("username must contain only ASCII letters, digits or underscores")
+    return value.lower()
+
+
+def normalize_identifier(value):
+    return value.strip().lower() if isinstance(value, str) else value
+
+
+Username = Annotated[
+    str, BeforeValidator(normalize_username), Field(min_length=4, max_length=20, pattern=r"^[a-z0-9_]{4,20}$")
+]
+LoginIdentifier = Annotated[
+    str, BeforeValidator(normalize_identifier), Field(min_length=1, max_length=254)
+]
+
+
+class UsernameAvailabilityQuery(Dto):
+    username: Username
+
+
+class UsernameAvailabilityResponse(Dto):
+    username: str
+    available: bool
+
+
 class AuthUser(Dto):
     id: int = Field(gt=0)
     email: EmailStr
+    username: str | None = None
     nickname: str | None = None
     phone_number: str | None = Field(default=None, serialization_alias="phoneNumber")
     postal_code: str | None = Field(default=None, serialization_alias="postalCode")
@@ -58,6 +89,7 @@ class MemberAddressInput(Dto):
 
 class SignupRequest(MemberAddressInput):
     email: EmailStr
+    username: Username
     password: str = Field(min_length=8, max_length=128)
     birth_date: date | None = Field(default=None, validation_alias="birthDate")
     gender: Gender | None = None
@@ -82,7 +114,7 @@ class SignupRequest(MemberAddressInput):
 
 
 class LoginRequest(Dto):
-    email: EmailStr
+    identifier: LoginIdentifier = Field(validation_alias=AliasChoices("identifier", "email"))
     password: str = Field(min_length=1, max_length=128)
 
 
@@ -98,6 +130,7 @@ class OAuthLoginRequest(Dto):
 
 
 class ProfileUpdateRequest(MemberAddressInput):
+    username: Username | None = None
     nickname: str | None = Field(default=None, max_length=30)
     phone_number: str | None = Field(
         default=None, min_length=10, max_length=13, validation_alias="phoneNumber"
@@ -155,11 +188,11 @@ class AccountReminderRequest(Dto):
 
 
 class PasswordResetRequest(Dto):
+    username: LoginIdentifier
     email: EmailStr
 
 
-class PasswordResetConfirm(Dto):
-    email: EmailStr
+class PasswordResetConfirm(PasswordResetRequest):
     code: str = Field(pattern=r"^\d{6}$")
     new_password: str = Field(min_length=8, max_length=128, validation_alias="newPassword")
 
