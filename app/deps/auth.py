@@ -105,6 +105,10 @@ def require_user(user: LoginUser | None = Depends(optional_user)) -> LoginUser:
 
 
 def require_admin(user: LoginUser = Depends(require_user)) -> LoginUser:
-    if user.email.lower() not in admins():
+    if not is_admin(user):
         raise ApiError(403, "forbidden", "Administrator access is required.")
     return user
+
+
+def is_admin(user: LoginUser) -> bool:
+    return user.email.lower() in admins()

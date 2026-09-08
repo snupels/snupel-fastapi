@@ -3,6 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.database import get_session
+from app.deps.auth import is_admin
 from app.exceptions import ApiError
 from app.repositories.passport import PassportRepository
 
@@ -11,17 +12,19 @@ class PassportService:
     def __init__(self, repository: PassportRepository) -> None:
         self.repository = repository
 
-    async def _found(self, item_id: int):
+    async def _found(self, item_id: int, user=None):
         row = await self.repository.get(item_id)
         if not row:
             raise ApiError(404, "not_found", "Passport not found.")
+        if user and not is_admin(user) and row.user_id != user.id:
+            raise ApiError(403, "forbidden", "Passport access is denied.")
         return row
 
     async def list(self, _user=None, *, offset: int = 0, limit: int = 20):
         return await self.repository.list(offset=offset, limit=limit)
 
-    async def get(self, item_id: int, _user=None):
-        return await self._found(item_id)
+    async def get(self, item_id: int, user=None):
+        return await self._found(item_id, user)
 
     async def create(self, body, _user=None):
         if await self.repository.get_by_user(body.user_id):
@@ -49,7 +52,7 @@ class PassportService:
         offset: int = 0,
         limit: int = 20,
     ):
-        passport = await self._found(item_id)
+        passport = await self._found(item_id, _user)
         return await self.repository.mission_progress(
             passport.id, offset=offset, limit=limit
         )

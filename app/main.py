@@ -13,6 +13,8 @@ from .routes.badge import router as badges_router
 from .routes.collected_badge import router as collected_badges_router
 from .routes.collected_stamp import router as collected_stamps_router
 from .routes.course import router as courses_router
+from .routes.me import admin_router as reward_claims_router
+from .routes.me import router as me_router
 from .routes.passport import router as passports_router
 from .routes.recommendation import admin_router as admin_missions_router
 from .routes.recommendation import router as recommendations_router
@@ -45,7 +47,17 @@ async def security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
     if request.url.path.startswith(
-        ("/api/auth", "/api/stamp-submissions", "/api/community-feed", "/api/admin", "/admin")
+        (
+            "/api/auth",
+            "/api/me",
+            "/api/passports",
+            "/api/collected-stamps",
+            "/api/collected-badges",
+            "/api/stamp-submissions",
+            "/api/community-feed",
+            "/api/admin",
+            "/admin",
+        )
     ):
         response.headers["Cache-Control"] = "no-store"
     if os.getenv("ENVIRONMENT") == "production":
@@ -81,6 +93,8 @@ for router in (
     stamp_submissions_router,
     stamp_catalog_router,
     stampbook_router,
+    me_router,
+    reward_claims_router,
     recommendations_router,
     admin_missions_router,
     weather_router,

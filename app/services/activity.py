@@ -20,6 +20,8 @@ class ActivityService(CrudService):
         return await self.repository.update(row, body)
 
     async def explore(self, **filters):
+        if filters.get("q"):
+            filters["q"] = filters["q"].strip() or None
         rows = await self.repository.explore(**filters)
         items: dict[int, dict] = {}
         for activity, theme in rows:

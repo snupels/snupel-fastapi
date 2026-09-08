@@ -61,12 +61,21 @@ class StampSubmissionResponse(TimestampedResponse):
     proof_url: str | None = Field(default=None, serialization_alias="proofUrl")
     share_to_feed: bool = Field(default=False, serialization_alias="shareToFeed")
     feed_caption: str | None = Field(default=None, serialization_alias="feedCaption")
+    activity: "SubmissionActivityResponse | None" = None
+    course_title: str | None = Field(default=None, serialization_alias="courseTitle")
+    stamp_name: str | None = Field(default=None, serialization_alias="stampName")
+    submitted_at: datetime | None = Field(default=None, serialization_alias="submittedAt")
 
 
 class SubmissionActivityResponse(OrmDto):
     id: int = Field(gt=0)
     category: ActivityCategory
     place_name: str | None = Field(serialization_alias="placeName")
+    sport_name: str | None = Field(default=None, serialization_alias="sportName")
+    sigun: str | None = None
+    representative_image_url: str | None = Field(
+        default=None, serialization_alias="representativeImageUrl"
+    )
     address: str | None
     starts_at: datetime | None = Field(serialization_alias="startsAt")
     ends_at: datetime | None = Field(serialization_alias="endsAt")

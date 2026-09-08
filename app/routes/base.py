@@ -17,11 +17,13 @@ def create_crud_router(
     response_model,
     service_dependency,
     read_access: Access = "public",
+    detail_access: Access | None = None,
     write_access: Access = "admin",
 ) -> APIRouter:
     router = APIRouter(prefix=prefix, tags=[tag])
     dependencies = {"public": optional_user, "user": require_user, "admin": require_admin}
     read_actor = dependencies[read_access]
+    detail_actor = dependencies[detail_access or read_access]
     write_actor = dependencies[write_access]
 
     @router.get("", response_model=list[response_model])
@@ -43,7 +45,7 @@ def create_crud_router(
     @router.get("/{item_id}", response_model=response_model)
     async def get_item(
         item_id: int = Path(gt=0),
-        actor: LoginUser | None = Depends(read_actor),
+        actor: LoginUser | None = Depends(detail_actor),
         service: Any = Depends(service_dependency),
     ):
         return await service.get(item_id, actor)

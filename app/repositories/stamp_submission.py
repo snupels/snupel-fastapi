@@ -1,10 +1,12 @@
 from datetime import datetime
 
-from sqlalchemy import delete, exists, func, select
+from sqlalchemy import case, delete, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
     Activity,
+    Badge,
+    CollectedBadge,
     CollectedStamp,
     Course,
     CourseStamp,
@@ -12,6 +14,7 @@ from app.models import (
     FeedLike,
     Passport,
     Stamp,
+    StampCatalog,
     StampSubmission,
     SubmissionStatus,
     User,
@@ -93,15 +96,29 @@ class StampSubmissionRepository:
         return row
 
     async def list_user(self, user_id: int, *, offset: int = 0, limit: int = 20):
+        course_title = (
+            select(Course.title)
+            .join(CourseStamp, CourseStamp.course_id == Course.id)
+            .where(CourseStamp.stamp_id == Stamp.id, Course.is_published.is_(True))
+            .order_by(Course.id)
+            .limit(1)
+            .scalar_subquery()
+        )
         return list(
-            await self.session.scalars(
-                select(StampSubmission)
+            (
+                await self.session.execute(
+                    select(StampSubmission, Activity, course_title, StampCatalog)
                 .join(Passport, Passport.id == StampSubmission.passport_id)
+                .join(Stamp, Stamp.id == StampSubmission.stamp_id)
+                .join(Activity, Activity.id == Stamp.activity_id)
+                .outerjoin(StampCatalog, StampCatalog.id == Stamp.stamp_catalog_id)
                 .where(Passport.user_id == user_id)
                 .order_by(StampSubmission.id.desc())
                 .offset(offset)
                 .limit(limit)
+                )
             )
+            .all()
         )
 
     async def list_status(
@@ -304,6 +321,9 @@ class StampSubmissionRepository:
         return row
 
     async def approve(self, row: StampSubmission, reviewer_id: int):
+        await self.session.scalar(
+            select(Passport.id).where(Passport.id == row.passport_id).with_for_update()
+        )
         if not await self.collected(row.passport_id, row.stamp_id):
             self.session.add(
                 CollectedStamp(passport_id=row.passport_id, stamp_id=row.stamp_id)
@@ -315,6 +335,45 @@ class StampSubmissionRepository:
         await self.session.flush()
         await self.session.refresh(row)
         return row
+
+    async def badge_progress(self, passport_id: int):
+        row = (
+            await self.session.execute(
+                select(
+                    func.count(CollectedStamp.id).label("missions"),
+                    func.count(func.distinct(Activity.sigun)).label("regions"),
+                    func.count(func.distinct(Activity.sport_name)).label("sports"),
+                    func.count(
+                        func.distinct(
+                            case(
+                                (
+                                    func.lower(Activity.sport_name).in_(
+                                        ("hiking", "mountain", "등산")
+                                    ),
+                                    Activity.id,
+                                )
+                            )
+                        )
+                    ).label("mountains"),
+                )
+                .select_from(CollectedStamp)
+                .join(Stamp, Stamp.id == CollectedStamp.stamp_id)
+                .join(Activity, Activity.id == Stamp.activity_id)
+                .where(CollectedStamp.passport_id == passport_id)
+            )
+        ).mappings().one()
+        return {key: int(row[key] or 0) for key in ("missions", "regions", "sports", "mountains")}
+
+    async def award_badges(self, passport_id: int, rule_keys: set[str]) -> None:
+        if not rule_keys:
+            return
+        badge_ids = select(Badge.id).where(Badge.rule_key.in_(rule_keys))
+        existing = select(CollectedBadge.badge_id).where(
+            CollectedBadge.passport_id == passport_id
+        )
+        for badge_id in await self.session.scalars(badge_ids.where(Badge.id.not_in(existing))):
+            self.session.add(CollectedBadge(passport_id=passport_id, badge_id=badge_id))
+        await self.session.flush()
 
     async def reject(self, row: StampSubmission, reviewer_id: int, reason: str):
         row.status = SubmissionStatus.rejected

@@ -66,13 +66,26 @@ class StampSubmissionService:
                 "created_at",
                 "updated_at",
             )
-        } | {"proof_url": self.storage.proof_url(row.object_key)}
+        } | {
+            "proof_url": self.storage.proof_url(row.object_key),
+            "submitted_at": row.created_at,
+        }
+
+    def _user_response(self, row, activity, course_title, catalog):
+        stamp_name = (
+            f"{catalog.region_ko} {catalog.sport_ko}" if catalog else None
+        )
+        return self._response(row) | {
+            "activity": activity,
+            "course_title": course_title,
+            "stamp_name": stamp_name,
+        }
 
     async def list_user(
         self, user: LoginUser, *, offset: int = 0, limit: int = 20
     ):
         rows = await self.repository.list_user(user.id, offset=offset, limit=limit)
-        return [self._response(row) for row in rows]
+        return [self._user_response(*item) for item in rows]
 
     def _profile_url(self, user) -> str | None:
         key = getattr(user, "profile_image_key", None) if user else None
@@ -235,6 +248,18 @@ class StampSubmissionService:
             if reason is not None
             else await self.repository.approve(row, reviewer.id)
         )
+        if reason is None:
+            progress = await self.repository.badge_progress(reviewed.passport_id)
+            rules = set()
+            if progress["missions"] >= 1:
+                rules.add("first_mission")
+            if progress["mountains"] >= 1:
+                rules.add("first_mountain")
+            if progress["regions"] >= 3:
+                rules.add("three_regions")
+            if progress["sports"] >= 3:
+                rules.add("three_sports")
+            await self.repository.award_badges(reviewed.passport_id, rules)
         return self._response(reviewed)
 
 

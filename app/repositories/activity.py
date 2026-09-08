@@ -60,6 +60,7 @@ class ActivityRepository(CrudRepository):
         categories: tuple[str, ...] = ("sports",),
         offset: int = 0,
         limit: int = 20,
+        q: str | None = None,
     ):
         activity_ids = (
             select(Activity.id)
@@ -90,6 +91,16 @@ class ActivityRepository(CrudRepository):
             activity_ids = activity_ids.where(published_course.exists())
         elif mission is False:
             activity_ids = activity_ids.where(~published_course.exists())
+        if q:
+            activity_ids = activity_ids.where(
+                or_(
+                    Activity.place_name.contains(q),
+                    Activity.sport_name.contains(q),
+                    Activity.summary.contains(q),
+                    Activity.address.contains(q),
+                    Activity.sigun.contains(q),
+                )
+            )
         if categories == ("sports",):
             activity_ids = activity_ids.order_by(
                 published_course.exists().desc(),

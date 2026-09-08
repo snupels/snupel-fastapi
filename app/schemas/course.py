@@ -15,6 +15,13 @@ class CourseCreate(Dto):
     theme: CourseTheme
     title: str | None = Field(default=None, max_length=255)
     description: str | None = None
+    participation_period: str | None = Field(default=None, max_length=255)
+    proof_instructions: str | None = None
+    photo_prompt: str | None = None
+    reward_description: str | None = None
+    steps: list[str] | None = None
+    official_url: AnyHttpUrl | None = None
+    official_label: str | None = Field(default=None, max_length=100)
     is_published: bool = False
 
     @model_validator(mode="after")
@@ -35,6 +42,13 @@ class CoursePatch(Dto):
     theme: CourseTheme | None = None
     title: str | None = Field(default=None, max_length=255)
     description: str | None = None
+    participation_period: str | None = Field(default=None, max_length=255)
+    proof_instructions: str | None = None
+    photo_prompt: str | None = None
+    reward_description: str | None = None
+    steps: list[str] | None = None
+    official_url: AnyHttpUrl | None = None
+    official_label: str | None = Field(default=None, max_length=100)
     is_published: bool | None = None
 
     @model_validator(mode="after")
@@ -53,6 +67,13 @@ class CourseResponse(TimestampedResponse):
     theme: CourseTheme
     title: str | None = None
     description: str | None = None
+    participation_period: str | None = Field(default=None, serialization_alias="participationPeriod")
+    proof_instructions: str | None = Field(default=None, serialization_alias="proofInstructions")
+    photo_prompt: str | None = Field(default=None, serialization_alias="photoPrompt")
+    reward_description: str | None = Field(default=None, serialization_alias="rewardDescription")
+    steps: list[str] | None = None
+    official_url: str | None = Field(default=None, serialization_alias="officialUrl")
+    official_label: str | None = Field(default=None, serialization_alias="officialLabel")
     is_published: bool = Field(default=False, serialization_alias="isPublished")
 
 

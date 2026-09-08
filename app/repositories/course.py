@@ -12,8 +12,9 @@ class CourseRepository(CrudRepository):
     @staticmethod
     def _values(body):
         values = dumped(body)
-        if values.get("representative_image_url") is not None:
-            values["representative_image_url"] = str(values["representative_image_url"])
+        for key in ("representative_image_url", "official_url"):
+            if values.get(key) is not None:
+                values[key] = str(values[key])
         return values
 
     async def create_generated_mission(self, body, stops) -> Course | None:

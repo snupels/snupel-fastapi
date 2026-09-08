@@ -30,6 +30,11 @@ class CollectedRepository:
     async def target_exists(self, target_id: int) -> bool:
         return await self.session.get(self.target_model, target_id) is not None
 
+    async def owner_id(self, row) -> int | None:
+        return await self.session.scalar(
+            select(Passport.user_id).where(Passport.id == row.passport_id)
+        )
+
     async def duplicate(self, passport_id: int, target_id: int, except_id: int = 0) -> bool:
         target = getattr(self.model, self.target_field)
         return await self.session.scalar(

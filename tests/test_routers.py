@@ -358,15 +358,30 @@ def test_activity_map_rejects_inverted_bounds():
         ("/api/badges", get_badge_service),
         ("/api/activities", get_activity_service),
         ("/api/courses", get_course_service),
-        ("/api/passports", get_passport_service),
-        ("/api/collected-badges", get_collected_badge_service),
-        ("/api/collected-stamps", get_collected_stamp_service),
     ],
 )
 def test_data_lists_are_public(path, dependency):
     app.dependency_overrides[dependency] = lambda: FakeService(result=[])
     with TestClient(app) as client:
         assert client.get(path).status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("path", "dependency"),
+    [
+        ("/api/passports", get_passport_service),
+        ("/api/collected-badges", get_collected_badge_service),
+        ("/api/collected-stamps", get_collected_stamp_service),
+    ],
+)
+def test_personal_data_lists_are_admin_only(path, dependency):
+    app.dependency_overrides[dependency] = lambda: FakeService(result=[])
+    user_headers = {"Authorization": f"Bearer {token('user@example.com')}"}
+    admin_headers = {"Authorization": f"Bearer {token('admin@example.com')}"}
+    with TestClient(app) as client:
+        assert client.get(path).status_code == 401
+        assert client.get(path, headers=user_headers).status_code == 403
+        assert client.get(path, headers=admin_headers).status_code == 200
 
 
 def test_stamp_submission_routes_are_private_and_admin_review_has_activity():
@@ -485,6 +500,9 @@ def test_stamp_submission_routes_are_private_and_admin_review_has_activity():
         "id": 9,
         "category": "event",
         "placeName": "강릉 스포츠 행사",
+        "sportName": None,
+        "sigun": None,
+        "representativeImageUrl": None,
         "address": "강릉시",
         "startsAt": NOW,
         "endsAt": NOW,
@@ -579,9 +597,10 @@ def test_activity_explore_forwards_sigun_filter():
     app.dependency_overrides[get_activity_service] = lambda: service
 
     with TestClient(app) as client:
-        assert client.get("/api/sports?sigun=강릉시").status_code == 200
+        assert client.get("/api/sports?q= 스키 &sigun=강릉시").status_code == 200
 
     assert service.filters["sigun"] == "강릉시"
+    assert service.filters["q"] == " 스키 "
 
 
 def test_course_itinerary_returns_ordered_stops():

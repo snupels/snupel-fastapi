@@ -9,7 +9,11 @@ from .course import CourseStamp as CourseStamp
 from .enums import ActivityCategory as ActivityCategory
 from .enums import CourseTheme as CourseTheme
 from .enums import Gender as Gender
+from .enums import RewardClaimStatus as RewardClaimStatus
+from .enums import RewardMilestone as RewardMilestone
 from .enums import SubmissionStatus as SubmissionStatus
+from .me import RewardClaim as RewardClaim
+from .me import SavedActivity as SavedActivity
 from .passport import Passport as Passport
 from .stamp_catalog import StampCatalog as StampCatalog
 from .stamp_submission import StampSubmission as StampSubmission

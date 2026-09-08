@@ -14,4 +14,6 @@ router = create_crud_router(
     patch_model=CollectedBadgePatch,
     response_model=CollectedBadgeResponse,
     service_dependency=get_collected_badge_service,
+    read_access="admin",
+    detail_access="user",
 )
