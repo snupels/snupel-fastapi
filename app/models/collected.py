@@ -2,7 +2,7 @@ from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Index, UniqueConstraint, func, select
 from sqlalchemy.dialects.mysql import BIGINT
-from sqlalchemy.orm import Mapped, column_property, mapped_column
+from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
 
 from .activity import Stamp
 from .base import Base
@@ -29,6 +29,8 @@ class CollectedStamp(Base):
         .scalar_subquery()
     )
     collected_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.current_timestamp())
+    passport = relationship("Passport", foreign_keys=[passport_id])
+    stamp = relationship("Stamp", foreign_keys=[stamp_id])
 
 
 class CollectedBadge(Base):

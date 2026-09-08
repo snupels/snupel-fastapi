@@ -1,0 +1,56 @@
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<div class="container-xl">
+  <div class="d-flex align-items-center mb-3">
+    <div>
+      <h2 class="mb-1">패스포트 미션 제출 검토</h2>
+      <div class="text-secondary">사진과 장소를 확인한 뒤 승인하거나 거절하세요.</div>
+    </div>
+    <span class="badge bg-blue-lt ms-auto">대기 {{ submissions | length }}건</span>
+  </div>
+
+  {% if message %}<div class="alert alert-success" role="alert">{{ message }}</div>{% endif %}
+  {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+
+  {% if submissions %}
+  <div class="row row-cards">
+    {% for submission in submissions %}
+    <div class="col-12 col-lg-6">
+      <div class="card h-100">
+        {% if submission.proof_url %}
+        <a href="{{ submission.proof_url }}" target="_blank" rel="noopener noreferrer">
+          <img src="{{ submission.proof_url }}" class="card-img-top"
+            style="height: 320px; object-fit: contain; background: #f6f8fa"
+            alt="제출 #{{ submission.id }} 인증 사진">
+        </a>
+        {% endif %}
+        <div class="card-body">
+          <h3 class="card-title mb-1">{{ submission.activity.place_name or "이름 없는 장소" }}</h3>
+          <div class="text-secondary mb-3">
+            제출 #{{ submission.id }} · 패스포트 #{{ submission.passport_id }} · 스탬프 #{{ submission.stamp_id }}
+          </div>
+          {% if not submission.proof_url %}
+          <div class="alert alert-warning">사진 저장소가 연결되지 않았습니다. {{ submission.object_key }}</div>
+          {% endif %}
+          <form method="post">
+            <input type="hidden" name="submission_id" value="{{ submission.id }}">
+            <label class="form-label" for="reason-{{ submission.id }}">거절 사유</label>
+            <textarea id="reason-{{ submission.id }}" name="rejection_reason" maxlength="1000" rows="2"
+              class="form-control mb-3" placeholder="거절할 때만 입력하세요"></textarea>
+            <div class="d-flex gap-2">
+              <button type="submit" name="decision" value="approve" class="btn btn-success flex-fill">승인</button>
+              <button type="submit" name="decision" value="reject" class="btn btn-danger flex-fill">거절</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card">
+    <div class="card-body text-center py-6 text-secondary">검토 대기 중인 제출이 없습니다.</div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

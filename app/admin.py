@@ -4,9 +4,10 @@ import hmac
 import secrets
 import time
 from dataclasses import dataclass
+from urllib.parse import urlencode
 
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqladmin import Admin, BaseView, ModelView, expose
 from sqladmin.authentication import AuthenticationBackend
 from starlette.concurrency import run_in_threadpool
@@ -17,9 +18,11 @@ from .config import admins, production_secret
 from .config.database import SessionLocal, engine
 from .deps.auth import LoginUser, sign_access_token, verify_access_token
 from .deps.rate_limit import RateLimiter
+from .exceptions import ApiError
 from .jobs.sync_tourism import sync_tourism
 from .models import (
     Activity,
+    ActivityCategory,
     Badge,
     CollectedBadge,
     CollectedStamp,
@@ -29,12 +32,16 @@ from .models import (
     SocialAccount,
     Stamp,
     StampSubmission,
+    SubmissionStatus,
     User,
 )
 from .repositories.stamp import StampRepository
+from .repositories.stamp_submission import StampSubmissionRepository
 from .services.auth import password_hasher
 from .services.mail import send_mail
 from .services.stamp import StampService
+from .services.stamp_submission import StampSubmissionService
+from .services.storage import get_proof_storage
 
 OTP_EXPIRES_IN = 600
 OTP_RESEND_AFTER = 60
@@ -152,6 +159,8 @@ class AdminAuth(AuthenticationBackend):
 class DefaultAdmin(ModelView):
     column_list = "__all__"
     page_size = 25
+    can_export = False
+    can_import = False
 
 
 class UserAdmin(DefaultAdmin, model=User):
@@ -166,11 +175,78 @@ class SocialAccountAdmin(DefaultAdmin, model=SocialAccount):
 
 
 class PassportAdmin(DefaultAdmin, model=Passport):
-    pass
+    name = "패스포트"
+    name_plural = "패스포트"
+    category = "사용자"
+    column_list = [Passport.id, Passport.user_email, Passport.created_at]
+    column_labels = {Passport.user_email: "사용자 이메일", Passport.created_at: "생성일"}
 
 
 class ActivityAdmin(DefaultAdmin, model=Activity):
-    pass
+    name = "이벤트·축제"
+    name_plural = "이벤트·축제"
+    category = "콘텐츠"
+    icon = "fa-solid fa-calendar-days"
+    column_list = [
+        Activity.id,
+        Activity.place_name,
+        Activity.sigun,
+        Activity.starts_at,
+        Activity.ends_at,
+        Activity.is_active,
+    ]
+    column_labels = {
+        Activity.place_name: "이름",
+        Activity.sigun: "시군",
+        Activity.starts_at: "시작일",
+        Activity.ends_at: "종료일",
+        Activity.is_active: "노출",
+        "representative_image_url": "대표 이미지 URL",
+        "sport_name": "종목",
+        "region": "지역",
+        "summary": "설명",
+        "address": "주소",
+        "source_url": "안내 URL",
+        "latitude": "위도",
+        "longitude": "경도",
+    }
+    column_searchable_list = [Activity.place_name, Activity.sigun, Activity.address]
+    column_default_sort = (Activity.starts_at, True)
+    form_columns = [
+        "place_name",
+        "summary",
+        "representative_image_url",
+        "sport_name",
+        "region",
+        "sigun",
+        "address",
+        "latitude",
+        "longitude",
+        "source_url",
+        "starts_at",
+        "ends_at",
+        "is_active",
+    ]
+
+    def list_query(self, request: Request):
+        return select(Activity).where(Activity.category == ActivityCategory.event)
+
+    def count_query(self, request: Request):
+        return select(func.count(Activity.id)).where(Activity.category == ActivityCategory.event)
+
+    async def on_model_change(self, data, model, is_created: bool, request: Request) -> None:
+        model.category = ActivityCategory.event
+        if is_created:
+            model.source = "admin"
+
+    async def check_can_view_details(self, request: Request, model) -> bool:
+        return bool(model and model.category == ActivityCategory.event)
+
+    async def check_can_edit(self, request: Request, model) -> bool:
+        return bool(model and model.category == ActivityCategory.event)
+
+    async def check_can_delete(self, request: Request, model) -> bool:
+        return bool(model and model.category == ActivityCategory.event)
 
 
 class StampAdmin(DefaultAdmin, model=Stamp):
@@ -202,7 +278,29 @@ class StampSeedAdmin(BaseView):
 
 
 class CollectedStampAdmin(DefaultAdmin, model=CollectedStamp):
-    form_excluded_columns = [CollectedStamp.activity_id]
+    name = "사용자 스탬프"
+    name_plural = "사용자 스탬프"
+    category = "패스포트"
+    icon = "fa-solid fa-stamp"
+    column_list = [
+        CollectedStamp.id,
+        "passport",
+        "stamp",
+        CollectedStamp.activity_id,
+        CollectedStamp.collected_at,
+    ]
+    column_labels = {
+        "passport": "사용자 패스포트",
+        "stamp": "스탬프",
+        CollectedStamp.activity_id: "장소 ID",
+        CollectedStamp.collected_at: "획득일",
+    }
+    form_columns = ["passport", "stamp", "collected_at"]
+    form_ajax_refs = {
+        "passport": {"fields": (Passport.user_email, Passport.id), "limit": 20},
+        "stamp": {"fields": (Stamp.activity_label, Stamp.description), "limit": 20},
+    }
+    column_default_sort = (CollectedStamp.collected_at, True)
 
 
 class TourismSyncAdmin(BaseView):
@@ -218,10 +316,90 @@ class TourismSyncAdmin(BaseView):
         )
 
 
+def _review_reason(decision: str, reason: str) -> str | None:
+    if decision == "approve":
+        return None
+    if decision != "reject":
+        raise ValueError("승인 또는 거절을 선택해 주세요.")
+    reason = reason.strip()
+    if not 1 <= len(reason) <= 1000:
+        raise ValueError("거절 사유를 1~1000자로 입력해 주세요.")
+    return reason
+
+
+class SubmissionReviewAdmin(BaseView):
+    name = "제출 검토"
+    category = "패스포트"
+    icon = "fa-solid fa-camera"
+
+    @expose("/submission-review", methods=["GET", "POST"], identity="submission-review")
+    async def review(self, request: Request):
+        error = None
+        if request.method == "POST":
+            try:
+                form = await request.form()
+                item_id = int(str(form.get("submission_id", "")))
+                reason = _review_reason(
+                    str(form.get("decision", "")), str(form.get("rejection_reason", ""))
+                )
+                actor = verify_access_token(request.session.get("token", ""))
+                if not actor:
+                    return RedirectResponse("/admin/login", status_code=302)
+                async with SessionLocal() as session:
+                    service = StampSubmissionService(
+                        StampSubmissionRepository(session), get_proof_storage()
+                    )
+                    await service.review(item_id, actor, reason)
+                    await session.commit()
+                message = "제출을 승인했습니다." if reason is None else "제출을 거절했습니다."
+                return RedirectResponse(
+                    "/admin/submission-review?" + urlencode({"message": message}),
+                    status_code=303,
+                )
+            except (ApiError, ValueError) as exc:
+                error = exc.message if isinstance(exc, ApiError) else str(exc)
+
+        async with SessionLocal() as session:
+            # ponytail: one-page queue; paginate if pending reviews routinely exceed 100.
+            submissions = await StampSubmissionService(
+                StampSubmissionRepository(session), get_proof_storage()
+            ).list_admin(SubmissionStatus.pending, limit=100)
+        return await self.templates.TemplateResponse(
+            request,
+            "sqladmin/submission_review.html",
+            {
+                "submissions": submissions,
+                "error": error,
+                "message": request.query_params.get("message"),
+            },
+        )
+
+
 class StampSubmissionAdmin(DefaultAdmin, model=StampSubmission):
+    name = "제출 내역"
+    name_plural = "제출 내역"
+    category = "패스포트"
     can_create = False
     can_edit = False
     can_delete = False
+    column_list = [
+        StampSubmission.id,
+        StampSubmission.passport_id,
+        StampSubmission.stamp_id,
+        StampSubmission.status,
+        StampSubmission.reviewer_id,
+        StampSubmission.reviewed_at,
+        StampSubmission.rejection_reason,
+    ]
+    column_labels = {
+        StampSubmission.passport_id: "패스포트 ID",
+        StampSubmission.stamp_id: "스탬프 ID",
+        StampSubmission.status: "상태",
+        StampSubmission.reviewer_id: "검토자 ID",
+        StampSubmission.reviewed_at: "검토일",
+        StampSubmission.rejection_reason: "거절 사유",
+    }
+    column_default_sort = (StampSubmission.id, True)
 
 
 class BadgeAdmin(DefaultAdmin, model=Badge):
@@ -233,11 +411,61 @@ class CollectedBadgeAdmin(DefaultAdmin, model=CollectedBadge):
 
 
 class CourseAdmin(DefaultAdmin, model=Course):
-    pass
+    name = "패스포트 미션"
+    name_plural = "패스포트 미션"
+    category = "패스포트"
+    icon = "fa-solid fa-route"
+    column_list = [
+        Course.id,
+        Course.title,
+        Course.theme,
+        Course.sport_name,
+        Course.is_published,
+        Course.updated_at,
+    ]
+    column_labels = {
+        Course.title: "미션명",
+        Course.theme: "테마",
+        Course.sport_name: "종목",
+        Course.is_published: "공개",
+        Course.updated_at: "수정일",
+        "category": "분류",
+        "recommended_companion": "추천 동행",
+        "representative_image_url": "대표 이미지 URL",
+        "estimated_duration_minutes": "예상 소요 시간(분)",
+        "description": "설명",
+    }
+    column_searchable_list = [Course.title, Course.description]
+    column_default_sort = (Course.updated_at, True)
+    form_columns = [
+        "title",
+        "description",
+        "theme",
+        "category",
+        "sport_name",
+        "recommended_companion",
+        "estimated_duration_minutes",
+        "representative_image_url",
+        "is_published",
+    ]
 
 
 class CourseStampAdmin(DefaultAdmin, model=CourseStamp):
-    pass
+    name = "미션 장소"
+    name_plural = "미션 장소"
+    category = "패스포트"
+    icon = "fa-solid fa-location-dot"
+    column_list = [CourseStamp.id, "course", "stamp", CourseStamp.position]
+    column_labels = {
+        "course": "패스포트 미션",
+        "stamp": "스탬프 장소",
+        CourseStamp.position: "순서",
+    }
+    form_columns = ["course", "stamp", "position"]
+    form_ajax_refs = {
+        "course": {"fields": (Course.title, Course.sport_name), "limit": 20},
+        "stamp": {"fields": (Stamp.activity_label, Stamp.description), "limit": 20},
+    }
 
 
 def setup_admin(app) -> Admin:
@@ -248,7 +476,7 @@ def setup_admin(app) -> Admin:
     admin = Admin(
         app,
         engine,
-        title="Snupel Admin",
+        title="Snupel 운영자 도구",
         authentication_backend=AdminAuth(secret or "development-only-secret"),
     )
     for view in (
@@ -260,6 +488,7 @@ def setup_admin(app) -> Admin:
         StampSeedAdmin,
         CollectedStampAdmin,
         TourismSyncAdmin,
+        SubmissionReviewAdmin,
         StampSubmissionAdmin,
         BadgeAdmin,
         CollectedBadgeAdmin,
