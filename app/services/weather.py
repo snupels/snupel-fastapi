@@ -1,7 +1,8 @@
 import math
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from urllib.parse import unquote
 
 import httpx
 
@@ -13,6 +14,8 @@ SKY = {"1": "clear", "3": "cloudy", "4": "overcast"}
 PTY = {"0": "none", "1": "rain", "2": "rain_snow", "3": "snow", "4": "shower"}
 # ponytail: process-local cache is enough for the current single API instance; use Redis when scaling.
 weather_cache: dict[tuple[int, int, str, str], tuple[float, dict]] = {}
+fallback_cache: dict[tuple[float, float], tuple[float, dict]] = {}
+KST = timezone(timedelta(hours=9))
 
 
 def grid(latitude: float, longitude: float) -> tuple[int, int]:
@@ -50,10 +53,57 @@ def base_datetime(now: datetime) -> datetime:
 
 class WeatherService:
     async def forecast(self, latitude: float, longitude: float, now: datetime | None = None) -> dict:
+        coordinates = (round(latitude, 3), round(longitude, 3))
+        cached = fallback_cache.get(coordinates)
+        if cached and cached[0] > time.monotonic():
+            return cached[1]
+        try:
+            return await self._kma_forecast(latitude, longitude, now)
+        except ApiError:
+            # Keep the same public response contract if the KMA service is unavailable.
+            return await self._open_meteo_forecast(*coordinates)
+
+    async def _open_meteo_forecast(self, latitude: float, longitude: float) -> dict:
+        params = {"latitude": latitude, "longitude": longitude,
+                  "current": "temperature_2m,weather_code",
+                  "hourly": "precipitation_probability", "forecast_days": 1,
+                  "timezone": "Asia/Seoul"}
+        try:
+            async with httpx.AsyncClient(timeout=8) as client:
+                response = await client.get("https://api.open-meteo.com/v1/forecast", params=params)
+                response.raise_for_status()
+                data = response.json()
+            current = data["current"]
+            forecast_at = datetime.fromisoformat(current["time"]).replace(tzinfo=KST)
+            code = int(current["weather_code"])
+            temperature = float(current["temperature_2m"])
+            if not math.isfinite(temperature):
+                raise ValueError("Invalid temperature")
+            hourly = data.get("hourly", {})
+            hour = forecast_at.strftime("%Y-%m-%dT%H:00")
+            times = hourly.get("time", [])
+            probability = hourly.get("precipitation_probability", [])[times.index(hour)] if hour in times else None
+            result = {
+                "forecast_at": forecast_at, "temperature_c": temperature,
+                "precipitation_probability": int(probability) if probability is not None else None,
+                "sky": "clear" if code in (0, 1) else "cloudy" if code == 2 else "overcast",
+                "precipitation_type": "snow" if code in (71, 73, 75, 77, 85, 86) else "rain" if code in (51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99) else "none",
+                "source": "open_meteo",
+            }
+        except (httpx.HTTPError, KeyError, TypeError, ValueError, IndexError) as error:
+            raise ApiError(502, "weather_unavailable", "Weather providers are temporarily unavailable.") from error
+        if len(fallback_cache) >= 512:
+            fallback_cache.clear()
+        fallback_cache[(latitude, longitude)] = (time.monotonic() + 900, result)
+        return result
+
+    async def _kma_forecast(self, latitude: float, longitude: float, now: datetime | None = None) -> dict:
         key = os.getenv("DATA_GO_KR_SERVICE_KEY")
         if not key:
             raise ApiError(503, "weather_unavailable", "Public data service key is not configured.")
-        current = now or datetime.now()
+        current = now or datetime.now(KST).replace(tzinfo=None)
+        if current.tzinfo is not None:
+            current = current.astimezone(KST).replace(tzinfo=None)
         base = base_datetime(current)
         nx, ny = grid(latitude, longitude)
         cache_key = (nx, ny, base.strftime("%Y%m%d"), base.strftime("%H%M"))
@@ -61,7 +111,7 @@ class WeatherService:
         if cached and cached[0] > time.monotonic():
             return cached[1]
         params = {
-            "serviceKey": key,
+            "serviceKey": unquote(key),
             "pageNo": 1,
             "numOfRows": 1000,
             "dataType": "JSON",
@@ -71,7 +121,7 @@ class WeatherService:
             "ny": ny,
         }
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=5) as client:
                 response = await client.get(WEATHER_URL, params=params)
                 response.raise_for_status()
                 items = response.json()["response"]["body"]["items"]["item"]
@@ -93,6 +143,7 @@ class WeatherService:
             "precipitation_probability": int(values["POP"]) if "POP" in values else None,
             "sky": SKY.get(values.get("SKY")),
             "precipitation_type": PTY.get(values.get("PTY")),
+            "source": "kma",
         }
         weather_cache[cache_key] = (time.monotonic() + 1800, result)
         return result
