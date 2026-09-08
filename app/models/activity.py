@@ -10,12 +10,13 @@ from sqlalchemy import (
     Index,
     JSON,
     Numeric,
+    select,
     String,
     Text,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.mysql import BIGINT
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, column_property, mapped_column
 
 from .base import Base, TimestampMixin
 from .enums import ActivityCategory
@@ -65,3 +66,13 @@ class Stamp(TimestampMixin, Base):
     )
     description: Mapped[str | None] = mapped_column(Text)
     image_url: Mapped[str | None] = mapped_column(Text)
+    activity_label: Mapped[str | None] = column_property(
+        select(Activity.place_name)
+        .where(Activity.id == activity_id)
+        .correlate_except(Activity)
+        .scalar_subquery()
+    )
+
+    def __str__(self) -> str:
+        label = self.activity_label or self.description or "이름 없는 장소"
+        return f"{label} (스탬프 #{self.id})"
