@@ -1100,6 +1100,10 @@ def test_stamp_submission_requires_owned_published_mission_and_prefix():
     class Repository:
         locks = []
 
+        async def passport_id(self, user_id):
+            assert user_id == 7
+            return 1
+
         async def valid_target(self, *_, lock=False):
             self.locks.append(lock)
             return True
@@ -1153,7 +1157,7 @@ def test_stamp_submission_requires_owned_published_mission_and_prefix():
     assert error.value.status == 400
 
     valid = StampSubmissionCreate(
-        passport_id=1, stamp_id=2, object_key="proofs/1/2/x.jpg"
+        stamp_id=2, object_key="proofs/1/2/x.jpg"
     )
     result = asyncio.run(service.create(valid, user))
     assert result["status"] == SubmissionStatus.pending
