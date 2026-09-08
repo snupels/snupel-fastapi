@@ -85,7 +85,7 @@ def test_profile_update_only_changes_supplied_fields():
 
 def test_password_reset_rejects_expired_or_wrong_code(monkeypatch):
     monkeypatch.setenv("JWT_SECRET", "account-test-secret")
-    user = SimpleNamespace(id=7, email="user@example.com")
+    user = SimpleNamespace(id=7, email="user@example.com", username=None, password_hash="test-hash")
     reset = SimpleNamespace(
         code_hash=AuthService._code_hash(user.email, "123456"),
         expires_at=datetime.now() + timedelta(minutes=5),
@@ -106,6 +106,7 @@ def test_password_reset_rejects_expired_or_wrong_code(monkeypatch):
             AuthService(Repository()).confirm_password_reset(
                 PasswordResetConfirm(
                     email=user.email,
+                    username=user.email,
                     code="654321",
                     newPassword="new-password",
                 )
@@ -175,6 +176,7 @@ def test_signup_requires_terms_privacy_and_nickname():
 
     request = SignupRequest(
         email="user@example.com",
+        username="gangwon_member",
         password="password123",
         nickname="강원러너",
         phoneNumber="010-1234-5678",

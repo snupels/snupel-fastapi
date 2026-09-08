@@ -25,6 +25,7 @@ from app.services.stamp_submission import StampSubmissionService, get_stamp_subm
 
 
 SIGNUP = {
+    "username": "address_member",
     "email": "member@example.com", "password": "password123", "nickname": "강원회원",
     "phoneNumber": "01012345678", "agreeTerms": True, "agreePrivacy": True,
 }

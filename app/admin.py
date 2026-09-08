@@ -170,7 +170,7 @@ class UserAdmin(DefaultAdmin, model=User):
         if column.key not in {"password_hash", "postal_code", "address", "address_detail"}
     ]
     column_details_exclude_list = [User.password_hash, User.postal_code, User.address, User.address_detail]
-    form_excluded_columns = [User.password_hash, User.postal_code, User.address, User.address_detail]
+    form_excluded_columns = [User.password_hash, User.username, User.postal_code, User.address, User.address_detail]
     column_searchable_list = [User.email]
 
 

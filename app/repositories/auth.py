@@ -13,7 +13,15 @@ class AuthRepository:
     async def find_user_by_email(self, email: str) -> User | None:
         return await self.session.scalar(select(User).where(User.email == email))
 
-    async def find_user_by_id(self, user_id: int) -> User | None:
+    async def find_user_by_username(self, username: str) -> User | None:
+        return await self.session.scalar(select(User).where(User.username == username))
+
+    async def find_user_by_id(self, user_id: int, *, lock: bool = False) -> User | None:
+        if lock:
+            return await self.session.scalar(
+                select(User).where(User.id == user_id).with_for_update()
+                .execution_options(populate_existing=True)
+            )
         return await self.session.get(User, user_id)
 
     async def find_social_user(self, provider: str, provider_user_id: str) -> User | None:
@@ -31,6 +39,7 @@ class AuthRepository:
         *,
         email: str,
         password_hash: str | None,
+        username=None,
         birth_date=None,
         gender=None,
         nickname=None,
@@ -45,6 +54,7 @@ class AuthRepository:
     ) -> User:
         user = User(
             email=email,
+            username=username,
             password_hash=password_hash,
             birth_date=birth_date,
             gender=gender,
@@ -96,6 +106,9 @@ class AuthRepository:
         self.session.add(row)
         await self.session.flush()
         return row
+
+    def reset_code_transaction(self):
+        return self.session.begin_nested()
 
     async def active_reset_code(self, user_id: int) -> PasswordResetCode | None:
         return await self.session.scalar(

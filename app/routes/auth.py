@@ -25,6 +25,8 @@ from app.schemas.auth import (
     ProfileUploadResponse,
     SignupRequest,
     AuthUser,
+    UsernameAvailabilityQuery,
+    UsernameAvailabilityResponse,
 )
 from app.services.auth import AuthService, get_auth_service
 from app.services.oauth import authorization_url, is_allowed_redirect_uri
@@ -64,6 +66,14 @@ def set_oauth_state_cookie(response: Response, provider: str, state: str, redire
 @router.post("/signup", response_model=AuthResponse, status_code=201)
 async def signup(body: SignupRequest, service: AuthService = Depends(get_auth_service)):
     return await service.signup(body)
+
+
+@router.get("/username-availability", response_model=UsernameAvailabilityResponse)
+async def username_availability(
+    query: Annotated[UsernameAvailabilityQuery, Query()],
+    service: AuthService = Depends(get_auth_service),
+):
+    return await service.username_availability(query.username)
 
 
 @router.post("/login", response_model=AuthResponse)
@@ -111,7 +121,7 @@ async def request_password_reset(
     body: PasswordResetRequest,
     service: AuthService = Depends(get_auth_service),
 ):
-    await service.request_password_reset(str(body.email))
+    await service.request_password_reset(str(body.email), body.username)
     return {"message": "If the account exists, a reset code has been sent."}
 
 
