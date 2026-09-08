@@ -1346,6 +1346,9 @@ def test_approving_submission_creates_collected_stamp():
         async def refresh(self, _row):
             pass
 
+        async def scalar(self, _statement):
+            return 1
+
     session = Session()
     repository = StampSubmissionRepository(session)
 

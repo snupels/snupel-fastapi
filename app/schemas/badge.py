@@ -6,6 +6,7 @@ from app.schemas.common import Dto, TimestampedResponse
 
 
 class BadgeCreate(Dto):
+    rule_key: str | None = Field(default=None, min_length=1, max_length=50)
     image_url: AnyHttpUrl | None = None
     description: str | None = Field(default=None, min_length=1)
 
@@ -17,6 +18,7 @@ class BadgeCreate(Dto):
 
 
 class BadgePatch(Dto):
+    rule_key: str | None = Field(default=None, min_length=1, max_length=50)
     image_url: AnyHttpUrl | None = None
     description: str | None = Field(default=None, min_length=1)
 
@@ -28,5 +30,6 @@ class BadgePatch(Dto):
 
 
 class BadgeResponse(TimestampedResponse):
+    rule_key: str | None = Field(default=None, serialization_alias="ruleKey")
     image_url: str | None = Field(serialization_alias="imageUrl")
     description: str | None

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, ForeignKey, Index, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, ForeignKey, Index, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.mysql import BIGINT, INTEGER
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -22,6 +22,13 @@ class Course(TimestampMixin, Base):
     theme: Mapped[CourseTheme] = mapped_column(SqlEnum(CourseTheme))
     title: Mapped[str | None] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
+    participation_period: Mapped[str | None] = mapped_column(String(255))
+    proof_instructions: Mapped[str | None] = mapped_column(Text)
+    photo_prompt: Mapped[str | None] = mapped_column(Text)
+    reward_description: Mapped[str | None] = mapped_column(Text)
+    steps: Mapped[list[str] | None] = mapped_column(JSON)
+    official_url: Mapped[str | None] = mapped_column(Text)
+    official_label: Mapped[str | None] = mapped_column(String(100))
     is_published: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
 

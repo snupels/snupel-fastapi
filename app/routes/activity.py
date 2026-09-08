@@ -48,6 +48,7 @@ async def map_activities(
 @router.get("/api/sports", response_model=list[ActivityExploreResponse], tags=["Activities"])
 async def explore_sports(
     pagination: Annotated[Pagination, Depends()],
+    q: str | None = Query(default=None, max_length=100),
     region: str | None = Query(default=None, max_length=100),
     sigun: str | None = Query(default=None, max_length=100),
     sport: str | None = Query(default=None, max_length=100),
@@ -61,6 +62,7 @@ async def explore_sports(
         sport=sport,
         theme=theme,
         mission=mission,
+        q=q,
         offset=pagination.offset,
         limit=pagination.size,
     )
@@ -69,6 +71,7 @@ async def explore_sports(
 @router.get("/api/events", response_model=list[ActivityExploreResponse], tags=["Activities"])
 async def explore_events(
     pagination: Annotated[Pagination, Depends()],
+    q: str | None = Query(default=None, max_length=100),
     region: str | None = Query(default=None, max_length=100),
     sigun: str | None = Query(default=None, max_length=100),
     mission: bool | None = None,
@@ -81,6 +84,7 @@ async def explore_events(
         theme=None,
         mission=mission,
         categories=("event",),
+        q=q,
         offset=pagination.offset,
         limit=pagination.size,
     )
