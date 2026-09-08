@@ -49,7 +49,7 @@ def provider_from(value: str) -> AuthProvider:
         raise ApiError(400, "unsupported_provider", "Unsupported OAuth provider.") from None
 
 
-def set_oauth_state_cookie(response: Response, provider: str, state: str) -> None:
+def set_oauth_state_cookie(response: Response, provider: str, state: str, redirect_uri: str) -> None:
     response.set_cookie(
         f"oauth_state_{provider}",
         state,
@@ -57,7 +57,7 @@ def set_oauth_state_cookie(response: Response, provider: str, state: str) -> Non
         path=f"/api/auth/oauth/{provider}/login",
         httponly=True,
         samesite="lax",
-        secure=os.getenv("ENVIRONMENT") == "production",
+        secure=redirect_uri.startswith("https://") or os.getenv("ENVIRONMENT") == "production",
     )
 
 
@@ -154,7 +154,7 @@ def authorize(
     if not is_allowed_redirect_uri(redirect_uri):
         raise ApiError(400, "invalid_request", "redirectUri is not allowed.")
     state = secrets.token_urlsafe(32)
-    set_oauth_state_cookie(response, provider, state)
+    set_oauth_state_cookie(response, provider, state, redirect_uri)
     return OAuthAuthorizeResponse(
         provider=parsed_provider,
         authorization_url=authorization_url(parsed_provider, redirect_uri, state),
@@ -174,7 +174,7 @@ def start_oauth(
         authorization_url(parsed_provider, redirect_uri, state),
         status_code=302,
     )
-    set_oauth_state_cookie(response, provider, state)
+    set_oauth_state_cookie(response, provider, state, redirect_uri)
     return response
 
 
@@ -188,7 +188,12 @@ async def oauth_login(
 ):
     parsed_provider = provider_from(provider)
     expected_state = request.cookies.get(f"oauth_state_{provider}")
-    if not expected_state or body.state != expected_state:
+    if (
+        not expected_state
+        or not body.state.isascii()
+        or not expected_state.isascii()
+        or not secrets.compare_digest(body.state, expected_state)
+    ):
         raise ApiError(400, "invalid_oauth_state", "Invalid OAuth state.")
     result = await service.oauth_login(parsed_provider, body)
     response.delete_cookie(f"oauth_state_{provider}", path=f"/api/auth/oauth/{provider}/login")
