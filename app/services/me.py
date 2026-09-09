@@ -11,6 +11,7 @@ from app.services.storage import ProofStorage, get_proof_storage
 
 REWARD_BADGES = {RewardMilestone.badge_6: 6, RewardMilestone.badge_12: 12}
 HISTORY_CODES = {"submission": 1, "stamp": 2, "saved": 3}
+HISTORY_FEED_TYPES = ("submission", "stamp")
 
 
 class MeService:
@@ -30,8 +31,8 @@ class MeService:
             "activity": activity,
         }
 
-    async def saved_activities(self, user: LoginUser, *, offset: int, limit: int):
-        rows = await self.repository.saved_activities(user.id, offset=offset, limit=limit)
+    async def saved_activities(self, user: LoginUser, *, offset: int, limit: int, events_only: bool = False):
+        rows = await self.repository.saved_activities(user.id, offset=offset, limit=limit, events_only=events_only)
         return [self._saved_response(row, activity) for row, activity in rows]
 
     async def save_activity(self, activity_id: int, user: LoginUser):
@@ -81,7 +82,7 @@ class MeService:
         )
         rows = [
             self._history_response(kind, row)
-            for kind, group in zip(HISTORY_CODES, groups, strict=True)
+            for kind, group in zip(HISTORY_FEED_TYPES, groups, strict=True)
             for row in group
         ]
         rows.sort(key=lambda row: (row["occurred_at"], row["id"]), reverse=True)

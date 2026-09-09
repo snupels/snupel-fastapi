@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
     Activity,
+    ActivityCategory,
     Badge,
     CollectedBadge,
     CollectedStamp,
@@ -44,12 +45,18 @@ class MeRepository:
             )
         ).mappings().all()
 
-    async def saved_activities(self, user_id: int, *, offset: int, limit: int):
+    async def saved_activities(self, user_id: int, *, offset: int, limit: int, events_only: bool = False):
+        query = (
+            select(SavedActivity, Activity)
+            .join(Activity, Activity.id == SavedActivity.activity_id)
+            .where(SavedActivity.user_id == user_id)
+        )
+        if events_only:
+            # Both events and festivals use the API's event category.
+            query = query.where(Activity.category == ActivityCategory.event)
         return (
             await self.session.execute(
-                select(SavedActivity, Activity)
-                .join(Activity, Activity.id == SavedActivity.activity_id)
-                .where(SavedActivity.user_id == user_id)
+                query
                 .order_by(SavedActivity.created_at.desc(), SavedActivity.id.desc())
                 .offset(offset)
                 .limit(limit)
@@ -198,7 +205,6 @@ class MeRepository:
         queries = (
             self._submission_history(user_id, q, status),
             self._stamp_history(user_id, q, status),
-            self._saved_history(user_id, q, status),
         )
         return [
             (

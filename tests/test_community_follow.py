@@ -86,7 +86,8 @@ def test_demo_seed_is_idempotent_and_never_awards_stamps():
         row = connection.execute(text("SELECT * FROM stamp_submissions")).mappings().one()
         assert row["passport_id"] is None and row["stamp_id"] is None
         assert row["author_id"] == 7 and row["is_demo"] == 1
-        assert "실제 방문·미션 인증이 아닙니다" in row["feed_caption"]
+        assert "[운영자 데모]" in row["feed_caption"]
+        assert "이 게시글은 기능 체험용 안내" not in row["feed_caption"]
 
 
 def test_demo_response_uses_no_storage_or_fake_activity():
