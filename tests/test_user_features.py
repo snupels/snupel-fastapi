@@ -127,8 +127,7 @@ def test_activity_history_has_stable_ids_search_filter_and_global_pagination():
             assert (user_id, q, status, limit) == (7, "스키", "collected", 2)
             return [
                 [],
-                [item(2, NOW + timedelta(days=2))],
-                [item(3, NOW + timedelta(days=1))],
+                [item(2, NOW + timedelta(days=2)), item(3, NOW + timedelta(days=1))],
             ]
 
         async def activity_history_item(self, user_id, kind, source_id):
@@ -145,7 +144,8 @@ def test_activity_history_has_stable_ids_search_filter_and_global_pagination():
             limit=2,
         )
     )
-    assert [row["id"] for row in rows] == [22, 33]
+    assert [row["id"] for row in rows] == [22, 32]
+    assert all(row["type"] == "stamp" for row in rows)
     assert rows[0]["status"] == "collected"
     detail = run(service.activity_history_item(3 * 10 + HISTORY_CODES["saved"], LoginUser(7, "u@example.com")))
     assert detail["type"] == "saved" and detail["activity_id"] == 3
@@ -171,9 +171,10 @@ def test_activity_history_queries_join_owner_sources_and_apply_filters():
         str(statement.compile(dialect=mysql.dialect(), compile_kwargs={"literal_binds": True}))
         for statement in statements
     ]
-    assert len(sql) == 3
+    assert len(sql) == 2
     assert "passports.user_id = 7" in sql[0] and "stamp_submissions" in sql[0]
-    assert "collected_stamps" in sql[1] and "saved_activities" in sql[2]
+    assert "collected_stamps" in sql[1]
+    assert all("saved_activities" not in statement for statement in sql)
     assert all("스키" in statement and "LIMIT 20" in statement for statement in sql)
 
 
@@ -273,7 +274,7 @@ def test_me_and_reward_routes_require_login_and_preserve_contract(monkeypatch):
             assert (actor.id, offset, limit) == (7, 0, 20)
             return []
 
-        async def saved_activities(self, actor, *, offset, limit):
+        async def saved_activities(self, actor, *, offset, limit, events_only=False):
             return []
 
         async def save_activity(self, activity_id, actor):

@@ -32,11 +32,12 @@ async def badges(
 @router.get("/saved-activities", response_model=list[SavedActivityResponse])
 async def saved_activities(
     pagination: Annotated[Pagination, Depends()],
+    events_only: bool = Query(default=False, alias="eventsOnly"),
     actor: LoginUser = Depends(require_user),
     service=Depends(get_me_service),
 ):
     return await service.saved_activities(
-        actor, offset=pagination.offset, limit=pagination.size
+        actor, offset=pagination.offset, limit=pagination.size, events_only=events_only
     )
 
 
