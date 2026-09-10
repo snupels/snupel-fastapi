@@ -19,6 +19,7 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_LEG_KM = 40
 AVERAGE_KPH = 40
 ROAD_DISTANCE_FACTOR = 1.3
+MOUNTAIN_ROAD_DISTANCE_FACTOR = 1.6
 MAX_COHERENT_CANDIDATES = 30
 MAX_AI_CANDIDATES = 10
 MIN_THEME_CANDIDATES = 3
@@ -102,6 +103,14 @@ class RecommendationService:
             return 60
 
     @staticmethod
+    def _mountainous(activity) -> bool:
+        sport = str(getattr(activity, "sport_name", "") or "").lower()
+        name = str(getattr(activity, "place_name", "") or "")
+        return sport in {"hiking", "mountain", "ski", "snowboard", "등산", "스키", "산악"} or any(
+            word in name for word in ("스키장", "등산", "산악")
+        )
+
+    @staticmethod
     def _distance_km(first, second) -> float | None:
         if first.id == second.id:
             return 0
@@ -117,7 +126,12 @@ class RecommendationService:
                 + math.cos(lat1) * math.cos(lat2) * math.sin(delta_lon / 2) ** 2
             )
             straight_line_km = 6371 * 2 * math.atan2(math.sqrt(value), math.sqrt(1 - value))
-            return straight_line_km * ROAD_DISTANCE_FACTOR
+            factor = (
+                MOUNTAIN_ROAD_DISTANCE_FACTOR
+                if RecommendationService._mountainous(first) or RecommendationService._mountainous(second)
+                else ROAD_DISTANCE_FACTOR
+            )
+            return straight_line_km * factor
         if first.sigun and first.sigun == second.sigun:
             return 10
         return None
@@ -148,7 +162,10 @@ class RecommendationService:
         )
 
     def _coherent_candidates(self, candidates, body):
-        candidates = [item for item in candidates if self._recommendable(item)]
+        candidates = [
+            item for item in candidates
+            if self._recommendable(item) and self._minutes(item) <= body.available_minutes
+        ]
         if not candidates:
             return []
         anchors = [
@@ -226,14 +243,17 @@ class RecommendationService:
 
         def route(first):
             ordered, pool, previous = [first], list(remaining), first
+            total = self._minutes(first)
             pool.remove(first)
             while pool:
                 reachable = [
-                    item for item in pool if self._travel_minutes(previous, item) is not None
+                    item for item in pool
+                    if (minutes := self._segment(previous, item)) is not None
+                    and total + minutes <= body.available_minutes
                 ]
                 if not reachable:
                     break
-                previous = min(
+                selected = min(
                     reachable,
                     key=lambda item: (
                         -self._theme_relevance(item, body.theme.value),
@@ -241,6 +261,8 @@ class RecommendationService:
                         item.id,
                     ),
                 )
+                total += self._segment(previous, selected)
+                previous = selected
                 ordered.append(previous)
                 pool.remove(previous)
             return ordered
@@ -250,6 +272,9 @@ class RecommendationService:
             if body.sport
             else remaining
         )
+        starts = [item for item in starts if self._minutes(item) <= body.available_minutes]
+        if not starts:
+            return []
         ordered = max(
             (route(first) for first in starts),
             key=lambda items: (
