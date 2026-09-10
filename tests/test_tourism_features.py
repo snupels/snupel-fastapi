@@ -1205,6 +1205,7 @@ def test_stamp_submission_community_feed_is_approved_opt_in_and_anonymous():
         "is_demo": False,
         "id": 12,
         "proof_url": "https://signed.example.com/feed.jpg",
+        "proof_urls": ["https://signed.example.com/feed.jpg"],
         "caption": "정상에서 만나요!",
         "author_id": 7,
         "author_name": "강원 스포츠 탐험가",

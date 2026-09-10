@@ -86,11 +86,13 @@ class StampSubmissionRepository:
         *,
         share_to_feed: bool = False,
         feed_caption: str | None = None,
+        extra_object_keys: list[str] | None = None,
     ):
         row = StampSubmission(
             passport_id=passport_id,
             stamp_id=stamp_id,
             object_key=object_key,
+            extra_object_keys=extra_object_keys or None,
             share_to_feed=share_to_feed,
             feed_caption=feed_caption,
             status=SubmissionStatus.pending,

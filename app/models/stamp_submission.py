@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.dialects.mysql import BIGINT
 from sqlalchemy.orm import Mapped, mapped_column
@@ -25,6 +25,7 @@ class StampSubmission(TimestampMixin, Base):
         BIGINT(unsigned=True), ForeignKey("stamps.id", ondelete="CASCADE")
     )
     object_key: Mapped[str] = mapped_column(String(500))
+    extra_object_keys: Mapped[list[str] | None] = mapped_column(JSON)
     author_id: Mapped[int | None] = mapped_column(
         BIGINT(unsigned=True), ForeignKey("users.id", ondelete="CASCADE")
     )
