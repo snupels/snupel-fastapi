@@ -1,6 +1,7 @@
 from datetime import datetime
+from typing import Annotated
 
-from pydantic import AliasChoices, Field, field_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 
 from app.models import ActivityCategory, SubmissionStatus
 from app.schemas.common import Dto, OrmDto, TimestampedResponse
@@ -42,6 +43,17 @@ class StampSubmissionCreate(Dto):
         max_length=300,
         validation_alias=AliasChoices("feedCaption", "feed_caption"),
     )
+    extra_object_keys: list[Annotated[str, Field(min_length=1, max_length=500)]] = Field(
+        default_factory=list, max_length=4,
+        validation_alias=AliasChoices("extraObjectKeys", "extra_object_keys"),
+    )
+
+    @model_validator(mode="after")
+    def unique_photos(self):
+        keys = [self.object_key, *self.extra_object_keys]
+        if len(keys) != len(set(keys)):
+            raise ValueError("Proof photos must be distinct.")
+        return self
 
     @field_validator("feed_caption")
     @classmethod
@@ -59,6 +71,7 @@ class StampSubmissionResponse(TimestampedResponse):
     reviewed_at: datetime | None = Field(serialization_alias="reviewedAt")
     rejection_reason: str | None = Field(serialization_alias="rejectionReason")
     proof_url: str | None = Field(default=None, serialization_alias="proofUrl")
+    proof_urls: list[str] = Field(default_factory=list, serialization_alias="proofUrls")
     share_to_feed: bool = Field(default=False, serialization_alias="shareToFeed")
     feed_caption: str | None = Field(default=None, serialization_alias="feedCaption")
     activity: "SubmissionActivityResponse | None" = None
@@ -106,6 +119,7 @@ class CommunityFeedResponse(OrmDto):
     is_demo: bool = Field(default=False, serialization_alias="isDemo")
     id: int = Field(gt=0)
     proof_url: str | None = Field(serialization_alias="proofUrl")
+    proof_urls: list[str] = Field(default_factory=list, serialization_alias="proofUrls")
     caption: str | None
     author_id: int = Field(gt=0, serialization_alias="authorId")
     author_name: str = Field(serialization_alias="authorName")

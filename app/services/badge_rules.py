@@ -64,6 +64,14 @@ VERIFIED_MISSION_SPORTS = {
     (item["title"], item["source"], item["externalId"]): _VERIFIED_BY_TITLE[item["title"]]
     for item in _DEFINITIONS if item["title"] in _VERIFIED_BY_TITLE
 }
+SPECIAL_BADGE_MISSIONS = {
+    ("두타산 정상 방문 인증", "tourapi", "127649"): "summit_1000m",
+    ("하조대 해변 일출 걷기 인증", "tourapi", "2710791"): "first_sunrise",
+}
+VERIFIED_MISSION_SPORTS.update({
+    ("두타산 정상 방문 인증", "tourapi", "127649"): ("hiking", None),
+    ("하조대 해변 일출 걷기 인증", "tourapi", "2710791"): ("trekking", None),
+})
 
 
 def normalize_sport(value: str | None) -> str | None:
@@ -106,6 +114,7 @@ def badge_progress(facts) -> dict[str, int]:
 
 
 def earned_badge_rules(facts) -> set[str]:
+    facts = list(facts)
     progress = badge_progress(facts)
     thresholds = {
         "first_mission": ("missions", 1), "first_mountain": ("mountains", 1),
@@ -114,6 +123,9 @@ def earned_badge_rules(facts) -> set[str]:
         "first_inland_water": ("inland_water", 1), "first_snow": ("snow", 1),
         "first_cycling": ("cycling", 1), "first_running": ("running", 1),
     }
-    # 1000m summits and sunrise require explicit mission-specific evidence;
-    # none of the current registered photo missions requires those proofs.
-    return {rule for rule, (metric, minimum) in thresholds.items() if progress[metric] >= minimum}
+    earned = {rule for rule, (metric, minimum) in thresholds.items() if progress[metric] >= minimum}
+    for fact in facts:
+        identity = (fact.get("course_title"), fact.get("source"), fact.get("external_id"))
+        if identity in SPECIAL_BADGE_MISSIONS:
+            earned.add(SPECIAL_BADGE_MISSIONS[identity])
+    return earned

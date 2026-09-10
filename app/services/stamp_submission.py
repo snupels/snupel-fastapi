@@ -44,9 +44,12 @@ class StampSubmissionService:
         passport_id = await self._passport_id(body.passport_id, user.id)
         await self._target(passport_id, body.stamp_id, user.id)
         prefix = f"proofs/{passport_id}/{body.stamp_id}/"
-        if not body.object_key.startswith(prefix):
+        extras = getattr(body, "extra_object_keys", [])
+        keys = [body.object_key, *extras]
+        if any(not key.startswith(prefix) for key in keys):
             raise ApiError(400, "bad_request", "Invalid proof object key.")
-        await run_in_threadpool(self.storage.validate, body.object_key)
+        for key in keys:
+            await run_in_threadpool(self.storage.validate, key)
         await self._target(passport_id, body.stamp_id, user.id, lock=True)
         return self._response(
             await self.repository.create(
@@ -55,8 +58,15 @@ class StampSubmissionService:
                 body.object_key,
                 share_to_feed=body.share_to_feed,
                 feed_caption=body.feed_caption if body.share_to_feed else None,
+                **({"extra_object_keys": extras} if extras else {}),
             )
         )
+
+    def _proof_urls(self, row):
+        if getattr(row, "is_demo", False):
+            return ["https://sportspassport.kr/community-demo.svg"]
+        return [url for key in [row.object_key, *(getattr(row, "extra_object_keys", None) or [])]
+                if (url := self.storage.proof_url(key))]
 
     def _response(self, row):
         return {
@@ -77,6 +87,7 @@ class StampSubmissionService:
             )
         } | {
             "proof_url": self.storage.proof_url(row.object_key),
+            "proof_urls": self._proof_urls(row),
             "submitted_at": row.created_at,
         }
 
@@ -128,6 +139,7 @@ class StampSubmissionService:
             "id": row.id,
             "is_demo": bool(getattr(row, "is_demo", False)),
             "proof_url": "https://sportspassport.kr/community-demo.svg" if getattr(row, "is_demo", False) else self.storage.proof_url(row.object_key),
+            "proof_urls": self._proof_urls(row),
             "caption": row.feed_caption,
             "author_id": getattr(author, "id", 0),
             "author_name": getattr(author, "nickname", None) or "강원 스포츠 탐험가",
