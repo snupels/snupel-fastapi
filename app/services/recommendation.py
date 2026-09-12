@@ -14,6 +14,8 @@ from app.exceptions import ApiError
 from app.repositories.activity import ActivityRepository
 from app.repositories.course import CourseRepository
 from app.services.weather import WeatherService, get_weather_service
+from app.services.badge_rules import normalize_sport
+from app.recommendation_sports import recommendation_sport_names
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_LEG_KM = 40
@@ -83,6 +85,22 @@ logger = logging.getLogger(__name__)
 
 
 class RecommendationService:
+    @staticmethod
+    def _sports_anchor(activity, sport=None) -> bool:
+        actual = str(getattr(activity, "sport_name", "") or "").strip().casefold()
+        if sport:
+            requested = str(sport).strip().casefold()
+            return actual in recommendation_sport_names(requested) or (
+                normalize_sport(actual) is not None
+                and normalize_sport(actual) == normalize_sport(requested)
+            )
+        return (
+            getattr(activity.category, "value", activity.category) == "sports"
+            or normalize_sport(actual) is not None
+            or actual in recommendation_sport_names("olympic_legacy")
+            or actual in recommendation_sport_names("marine")
+        )
+
     def __init__(
         self,
         repository: ActivityRepository,
@@ -169,7 +187,7 @@ class RecommendationService:
         if not candidates:
             return []
         anchors = [
-            item for item in candidates if body.sport is None or item.sport_name == body.sport
+            item for item in candidates if self._sports_anchor(item, body.sport)
         ]
         if not anchors:
             return []
@@ -239,7 +257,10 @@ class RecommendationService:
         if not candidates:
             return []
         relevant = [item for item in candidates if self._theme_relevance(item, body.theme.value)]
-        remaining = list(candidates) if body.sport else relevant or list(candidates)
+        # A scenic/theme-only pool must not discard the required sports stop.
+        remaining = [item for item in candidates if item in relevant or self._sports_anchor(item, body.sport)]
+        if body.sport:
+            remaining = list(candidates)
 
         def route(first):
             ordered, pool, previous = [first], list(remaining), first
@@ -267,11 +288,7 @@ class RecommendationService:
                 pool.remove(previous)
             return ordered
 
-        starts = (
-            [item for item in remaining if item.sport_name == body.sport]
-            if body.sport
-            else remaining
-        )
+        starts = [item for item in remaining if self._sports_anchor(item, body.sport)]
         starts = [item for item in starts if self._minutes(item) <= body.available_minutes]
         if not starts:
             return []
@@ -333,9 +350,8 @@ class RecommendationService:
             seen.add(item_id)
             total += minutes
             previous = activity
-        if not stops or (
-            body.sport
-            and not any(by_id[stop["activity_id"]].sport_name == body.sport for stop in stops)
+        if not stops or not any(
+            self._sports_anchor(by_id[stop["activity_id"]], body.sport) for stop in stops
         ):
             raise ValueError("AI course is empty or missing the requested sport")
         return stops
@@ -349,7 +365,7 @@ class RecommendationService:
             (activity.sigun == body.sigun if body.sigun else activity.region == body.region)
             for activity in selected
         ) / len(selected)
-        sport = 1 if body.sport is None else any(item.sport_name == body.sport for item in selected)
+        sport = any(self._sports_anchor(item, body.sport) for item in selected)
         theme = sum(
             min(self._theme_relevance(activity, body.theme.value), 1) for activity in selected
         ) / len(selected)
@@ -516,7 +532,8 @@ class RecommendationService:
                     "content": (
                         "Select an ordered, geographically coherent course using only candidate IDs. "
                         "Choose five varied stops whenever five can fit; otherwise choose the greatest "
-                        "feasible number. Include the requested sport when provided, respect the time "
+                        "feasible number. Always include at least one sports activity, and include "
+                        "the requested sport when provided. Respect the time "
                         "limit including travel, and write a Korean course title, description, and "
                         "specific reasons. "
                         "For every consecutive pair, the next ID must exist in the previous candidate's "
