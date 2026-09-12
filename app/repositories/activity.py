@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Activity, CollectedStamp, Course, CourseStamp, Passport, Stamp
 from app.models import ActivityCategory
 from app.repositories.base import CrudRepository, dumped
+from app.recommendation_sports import recommendation_sport_names
 
 
 class ActivityRepository(CrudRepository):
@@ -187,7 +188,9 @@ class ActivityRepository(CrudRepository):
             Course.is_published.is_(True),
             Course.theme == theme,
         )
-        sport_match = Activity.sport_name == sport if sport else True
+        sport_match = func.lower(func.trim(Activity.sport_name)).in_(
+            sorted(recommendation_sport_names(sport))
+        ) if sport else True
         query = select(
             Activity,
             theme_match.label("theme_match"),
@@ -209,7 +212,8 @@ class ActivityRepository(CrudRepository):
                 .correlate(Activity)
             )
             query = query.where(~visited)
-        ordering = [theme_match.desc(), Activity.id]
+        # Reserve candidate capacity for sports before filling it with scenery.
+        ordering = [(Activity.category == ActivityCategory.sports).desc(), theme_match.desc(), Activity.id]
         if sport:
             ordering.insert(0, sport_match.desc())
         rows = (await self.session.execute(query.order_by(*ordering).limit(limit))).all()
