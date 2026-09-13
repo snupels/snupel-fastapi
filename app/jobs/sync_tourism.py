@@ -286,7 +286,7 @@ def requested_gangwon_mountain(row: dict) -> bool:
 
 
 def tourism_sport(row: dict) -> str | None:
-    if requested_gangwon_mountain(row):
+    if gangwon_mountain_place(row):
         return "hiking"
     if row.get("api_hiking_routes") and row.get("title") and row.get("addr1"):
         return "hiking"
@@ -347,6 +347,36 @@ def tourism_plain_text(value: str) -> str:
     ))).strip()
 
 
+def mountain_candidate(row: dict) -> bool:
+    """Only actual Gangwon attractions, never businesses sharing a mountain name."""
+    title = str(row.get("title") or "")
+    return (
+        str(row.get("contenttypeid")) == "12"
+        and bool(title.strip())
+        and str(row.get("addr1") or "").startswith(("강원특별자치도 ", "강원도 "))
+        and not any(word in title for word in (*EXCLUDED_LEPORTS_KEYWORDS, "케이블카", "곤돌라"))
+        and (str(row.get("cat3") or "").startswith("A0101")
+             or any(word in title for word in ("등산", "산행", "탐방", "산", "봉", "령")))
+    )
+
+
+def gangwon_mountain_place(row: dict) -> bool:
+    if not mountain_candidate(row):
+        return False
+    code, title = str(row.get("cat3") or ""), str(row.get("title") or "")
+    if code == MOUNTAIN_CATEGORY_CODE:
+        return True
+    if code in {"A01010100", "A01010200", "A01010300"} and "산" in title:
+        return True
+    if row.get("api_hiking_routes"):
+        return True
+    # Other natural attractions need explicit activity evidence in source text.
+    text = tourism_plain_text(str(row.get("overview") or ""))
+    explicit_hiking = re.search(r"등산로|등산\s*코스|산행\s*코스|산악\s*탐방", text)
+    mountain_trail = re.search(r"(?:산|봉|령)(?:\s|$|\()", title) and re.search(r"탐방로|탐방\s*코스", text)
+    return code.startswith("A0101") and bool(explicit_hiking or mountain_trail)
+
+
 def tourism_item(row: dict, category: str = "tour") -> dict:
     sport_name = tourism_sport(row) if category == "tour" else None
     sport_categories = olympic_sport_categories(row) if category == "tour" else []
@@ -365,6 +395,9 @@ def tourism_item(row: dict, category: str = "tour") -> dict:
         source_metadata["facility_type"] = "등산로 안내가 있는 산·국립공원"
     if row.get("hiking_lookup_failed"):
         source_metadata["hiking_lookup_failed"] = True
+    if sport_name == "hiking" and gangwon_mountain_place(row):
+        source_metadata.setdefault("facility_type", "산·산행 탐방지")
+        source_metadata["hiking_classification"] = "tourapi_category_or_guidance"
     return {
         "external_id": str(row["contentid"]),
         "category": "sports" if sport_name else category,
@@ -379,7 +412,7 @@ def tourism_item(row: dict, category: str = "tour") -> dict:
             f"{detail['infoname']}\n{tourism_plain_text(detail['infotext'])}"
             for detail in row.get("api_hiking_routes", [])
         ) or (tourism_plain_text(str(row.get("overview") or ""))
-              if requested_gangwon_mountain(row) else None) or None,
+              if sport_name == "hiking" else None) or None,
         "address": " ".join(filter(None, (row.get("addr1"), row.get("addr2")))) or None,
         "source_url": OFFICIAL_SPORT_URLS.get(str(row["contentid"]))
         or homepage_url(row.get("homepage")),
@@ -606,7 +639,7 @@ class TourismSync:
             content_id = str(row.get("contentid") or "")
             if not content_id or content_id in OFFICIAL_SPORT_URLS:
                 return
-            if tourism_item(row)["category"] != "sports":
+            if tourism_item(row)["category"] != "sports" and not mountain_candidate(row):
                 return
             try:
                 async with semaphore:
@@ -621,13 +654,13 @@ class TourismSync:
                             "catcodeYN": "N",
                             "addrinfoYN": "N",
                             "mapinfoYN": "N",
-                            "overviewYN": "Y" if requested_gangwon_mountain(row) else "N",
+                            "overviewYN": "Y" if mountain_candidate(row) else "N",
                         },
                     )
                 details, _ = items(payload)
                 if details and homepage_url(details[0].get("homepage")):
                     row["homepage"] = details[0]["homepage"]
-                if details and requested_gangwon_mountain(row):
+                if details and mountain_candidate(row):
                     row["overview"] = details[0].get("overview")
             except (httpx.HTTPError, KeyError, TypeError, ValueError):
                 return
@@ -641,7 +674,7 @@ class TourismSync:
 
         async def fill(row: dict) -> None:
             if (str(row.get("contenttypeid")) != "12"
-                    or (row.get("cat3") != MOUNTAIN_CATEGORY_CODE
+                    or (not mountain_candidate(row) and row.get("cat3") != MOUNTAIN_CATEGORY_CODE
                         and "산" not in str(row.get("title") or ""))
                     or not row.get("addr1") or not row.get("contentid")):
                 return
@@ -659,7 +692,9 @@ class TourismSync:
             routes = [
                 {"infoname": str(detail["infoname"]), "infotext": str(detail["infotext"])}
                 for detail in details
-                if "등산로" in str(detail.get("infoname") or "")
+                if ("등산로" in str(detail.get("infoname") or "")
+                    or (mountain_candidate(row) and any(label in str(detail.get("infoname") or "")
+                        for label in ("등산코스", "산행코스", "탐방로", "탐방코스"))))
                 and tourism_plain_text(str(detail.get("infotext") or ""))
                 not in {"", "없음", "-", "해당없음"}
             ]
@@ -703,18 +738,29 @@ class TourismSync:
                 continue
         return rows
 
-    async def run(self) -> dict[str, int]:
-        common = {"MobileOS": "ETC", "MobileApp": "Snupel", "_type": "json"}
-        codes = await self._pages(f"{KOR_BASE}/areaCode2", common)
-        area_code = next(str(row["code"]) for row in codes if "강원" in row.get("name", ""))
+    async def _load_places(self, common: dict, area_code: str) -> list[dict]:
         places = await self._pages(
             f"{KOR_BASE}/areaBasedList2", common | {"areaCode": area_code, "arrange": "Q"}
         )
-        places = [
+        # Retrieve natural attractions independently of image availability.
+        natural_places = await self._pages(
+            f"{KOR_BASE}/areaBasedList2",
+            common | {"areaCode": area_code, "contentTypeId": "12", "arrange": "A"},
+        )
+        places = list({str(row["contentid"]): row for row in [
+            *(row for row in natural_places if mountain_candidate(row)), *places,
+        ] if row.get("contentid")}.values())
+        return [
             row
             for row in places
             if str(row.get("contentid")) not in EXCLUDED_TOURISM_CONTENT_IDS
         ]
+
+    async def run(self) -> dict[str, int]:
+        common = {"MobileOS": "ETC", "MobileApp": "Snupel", "_type": "json"}
+        codes = await self._pages(f"{KOR_BASE}/areaCode2", common)
+        area_code = next(str(row["code"]) for row in codes if "강원" in row.get("name", ""))
+        places = await self._load_places(common, area_code)
         await self._fill_hiking_routes(places, common)
         await self._fill_homepages(places, common)
         festivals = await self._pages(
