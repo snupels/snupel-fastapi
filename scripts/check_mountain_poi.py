@@ -13,10 +13,10 @@ async def main():
         print("ERROR: key not configured")
         return
     async with httpx.AsyncClient(timeout=40) as client:
-        for mountain in ["설악산", "오대산", "치악산", "태백산"]:
+        for mountain in ["", "설악산", "오대산", "치악산", "태백산"]:
             try:
                 response = await client.get(
-                    "https://apis.data.go.kr/B553662/frtrlRdsfInfoService/getFrtrlRdsfInfoList",
+                    "https://apis.data.go.kr/B553662/sceneryInfoService/getSceneryInfoList",
                     params={"serviceKey": key, "type": "json", "numOfRows": 5,
                             "pageNo": 1, "srchFrtrlNm": mountain},
                 )
