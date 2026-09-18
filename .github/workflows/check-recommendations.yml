@@ -24,4 +24,4 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
-          ssh "$SSH_USER@$SSH_HOST" "cd '$DEPLOY_PATH' && set -a && source .env && set +a && .venv/bin/python -" < scripts/check_trail_starts.py
+          ssh "$SSH_USER@$SSH_HOST" "cd '$DEPLOY_PATH' && set -a && source .env && set +a && .venv/bin/python -" < scripts/check_mountain_poi.py
