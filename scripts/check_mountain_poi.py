@@ -13,15 +13,24 @@ async def main():
         print("ERROR: key not configured")
         return
     async with httpx.AsyncClient(timeout=40) as client:
-        for mountain in ["설악산", "오대산", "태백산"]:
+        for mountain in ["100대명산 목록"]:
             try:
                 response = await client.get(
-                    "https://apis.data.go.kr/B553662/sghtngPoiInfoService/getSghtngPoiInfoList",
-                    params={"serviceKey": key, "type": "json", "numOfRows": 5,
-                            "pageNo": 1, "srchFrtrlNm": mountain},
+                    "https://apis.data.go.kr/B553662/top100FamtListBasiInfoService/getTop100FamtListBasiInfoList",
+                    params={"serviceKey": key, "type": "json", "numOfRows": 100,
+                            "pageNo": 1},
                 )
                 try:
                     data = response.json()
+                    body = data.get("response", {}).get("body", {})
+                    items = body.get("items", {})
+                    rows = items.get("item", []) if isinstance(items, dict) else []
+                    if isinstance(rows, dict):
+                        rows = [rows]
+                    data = {"header": data.get("response", {}).get("header"),
+                            "totalCount": body.get("totalCount"),
+                            "sample": rows[:1],
+                            "gangwon": [row for row in rows if "강원" in json.dumps(row, ensure_ascii=False)]}
                 except ValueError:
                     root = ET.fromstring(response.text)
                     data = {name: root.findtext(".//" + name) for name in
