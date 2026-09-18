@@ -1,4 +1,4 @@
-"""Bounded read-only inspection of the subscribed hiking POI service."""
+"""Bounded read-only inspection of subscribed trail surface records."""
 import asyncio
 import json
 import os
@@ -13,11 +13,11 @@ async def main():
         print("ERROR: key not configured")
         return
     async with httpx.AsyncClient(timeout=40) as client:
-        for mountain in ["", "설악산", "오대산", "치악산", "태백산"]:
+        for mountain in ["", "설악산", "오대산", "치악산", "태백산", "가리왕산"]:
             try:
                 response = await client.get(
-                    "https://apis.data.go.kr/B553662/sceneryInfoService/getSceneryInfoList",
-                    params={"serviceKey": key, "type": "json", "numOfRows": 5,
+                    "https://apis.data.go.kr/B553662/frtrlRdsfInfoService/getFrtrlRdsfInfoList",
+                    params={"serviceKey": key, "type": "json", "numOfRows": 10,
                             "pageNo": 1, "srchFrtrlNm": mountain},
                 )
                 try:
