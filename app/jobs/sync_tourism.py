@@ -823,17 +823,7 @@ async def sync_tourism() -> dict[str, int]:
     if not key:
         raise RuntimeError("DATA_GO_KR_SERVICE_KEY is required")
     async with SessionLocal.begin() as session, httpx.AsyncClient(timeout=20) as client:
-        result = await TourismSync(client, ActivityRepository(session), key).run()
-        from app.jobs.baekdu_trails import sync as sync_baekdu
-        try:
-            result["forest_baekdu"] = await sync_baekdu(
-                client, ActivityRepository(session), key, os.getenv("KAKAO_CLIENT_ID")
-            )
-        except (httpx.HTTPError, ValueError):
-            # Optional provider failures must not block existing tourism sources.
-            # No partial writes occur before all four routes and starts validate.
-            result["forest_baekdu_unavailable"] = 1
-        return result
+        return await TourismSync(client, ActivityRepository(session), key).run()
 
 
 async def main() -> None:
