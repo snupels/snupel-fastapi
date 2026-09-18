@@ -13,7 +13,7 @@ async def main():
         print("ERROR: key not configured")
         return
     async with httpx.AsyncClient(timeout=40) as client:
-        for keyword in ["설악산", "오대산", "태백산"]:
+        for keyword in [""]:
             try:
                 response = await client.get(
                     "https://apis.data.go.kr/1400000/trailInfoService/gettrailservice",
