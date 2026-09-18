@@ -772,11 +772,16 @@ class TourismSync:
             for row in await self._pages(DURUNUBI_URL, common)
             if in_gangwon(row)
         ]
-        mountains = [
-            row
-            for row in await self._pages(MOUNTAIN_URL, {"type": "json"})
-            if in_gangwon(row)
-        ]
+        mountains = None
+        try:
+            mountains = [
+                row
+                for row in await self._pages(MOUNTAIN_URL, {"type": "json"})
+                if in_gangwon(row)
+            ]
+        except httpx.HTTPError:
+            # Keep existing records; an optional source must not block other sources.
+            pass
         ski_golf = await self._file_rows(SKI_GOLF_DATA_URL)
         marine = await self._file_rows(MARINE_DATA_URL)
         marine_facilities = [
@@ -789,7 +794,6 @@ class TourismSync:
             "tourapi": [tourism_item(row) for row in places]
             + [tourism_item(row, "event") for row in festivals],
             "durunubi": [durunubi_item(row) for row in trails],
-            "mountain100": [mountain_item(row) for row in mountains],
             "gangwon_ski_golf": [ski_golf_item(row) for row in ski_golf],
             "gangwon_marine": [marine_item(row) for row in marine],
             "gangwon_marine_facility": [
@@ -797,11 +801,13 @@ class TourismSync:
             ],
             "gangwon_oxygen_road": [oxygen_road_item(row) for row in oxygen_roads],
         }
+        if mountains is not None:
+            source_rows["mountain100"] = [mountain_item(row) for row in mountains]
         for rows in source_rows.values():
             await self._fill_locations(rows)
 
         synced_at = datetime.now()
-        result = {}
+        result = {} if mountains is not None else {"mountain100_unavailable": 1}
         for source, rows in source_rows.items():
             result[source] = await self.repository.sync_source(source, rows, synced_at)
         candidates, protected_ids = await self.repository.sports_dedup_candidates()
