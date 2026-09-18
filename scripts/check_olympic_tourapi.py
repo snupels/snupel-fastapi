@@ -11,7 +11,7 @@ async def main():
     if not key:
         print("ERROR: service key is not configured")
         return
-    keywords = ["스키점프", "스키 점프", "알펜시아", "휘닉스", "올림픽파크", "올림픽 파크", "아이스아레나", "아이스 아레나", "컬링"]
+    keywords = ["아레나", "빙상", "컬링", "강릉아이스", "강릉 아이스"]
     async with httpx.AsyncClient(timeout=35) as client:
         for keyword in keywords:
             try:
