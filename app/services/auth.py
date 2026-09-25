@@ -17,7 +17,7 @@ from app.config.database import get_session
 from app.deps.auth import LoginUser, sign_access_token
 from app.exceptions import ApiError
 from app.repositories.auth import AuthRepository
-from app.schemas.auth import AuthProvider, AuthResponse, AuthUser
+from app.schemas.auth import AccountEmailInfo, AuthProvider, AuthResponse, AuthUser
 from app.services.mail import send_mail
 from app.services.storage import ProofStorage, get_proof_storage
 from .oauth import fetch_profile, is_allowed_redirect_uri
@@ -145,6 +145,7 @@ class AuthService:
                 user = await self.repository.replace_placeholder_email(
                     user.id, placeholder, profile_email.strip().lower()
                 )
+            user = await self._sync_kakao_email(user, provider, profile_email)
             return self._response(user)
         email = (
             profile_email or f"{provider.value}_{provider_user_id}@oauth.sportspassport.kr"
@@ -157,7 +158,24 @@ class AuthService:
             provider=provider.value,
             provider_user_id=provider_user_id,
         )
+        user = await self._sync_kakao_email(user, provider, profile_email)
         return self._response(user)
+
+    async def _sync_kakao_email(self, user, provider: AuthProvider, profile_email: str | None):
+        if provider is AuthProvider.kakao:
+            verified_email = profile_email.strip().lower() if profile_email else None
+            if getattr(user, "kakao_email", None) != verified_email:
+                user = await self.repository.update_profile(user, kakao_email=verified_email)
+        return user
+
+    async def email_info(self, actor: LoginUser) -> AccountEmailInfo:
+        user = await self.repository.find_user_by_id(actor.id)
+        if not user:
+            raise ApiError(404, "not_found", "User not found.")
+        return AccountEmailInfo(
+            user_id=user.id, account_email=user.email, kakao_email=user.kakao_email,
+            kakao_linked=await self.repository.has_social_provider(user.id, "kakao"),
+        )
 
     async def verify_password(self, actor: LoginUser, current_password: str) -> None:
         user = await self.repository.find_user_by_id(actor.id)

@@ -35,6 +35,11 @@ class AuthRepository:
             )
         )
 
+    async def has_social_provider(self, user_id: int, provider: str) -> bool:
+        return await self.session.scalar(select(SocialAccount.id).where(
+            SocialAccount.user_id == user_id, SocialAccount.provider == provider,
+        ).limit(1)) is not None
+
     async def create_user(
         self,
         *,
