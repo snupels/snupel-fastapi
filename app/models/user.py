@@ -17,6 +17,8 @@ class User(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     email: Mapped[str] = mapped_column(String(255))
+    # Verified provider contact, not a login identity or authorization source.
+    kakao_email: Mapped[str | None] = mapped_column(String(255))
     username: Mapped[str | None] = mapped_column(String(20))
     password_hash: Mapped[str | None] = mapped_column(Text)
     birth_date: Mapped[date | None] = mapped_column(Date)

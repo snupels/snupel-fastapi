@@ -65,6 +65,13 @@ class AuthUser(Dto):
     )
 
 
+class AccountEmailInfo(Dto):
+    user_id: int = Field(gt=0, serialization_alias="userId")
+    account_email: EmailStr = Field(serialization_alias="accountEmail")
+    kakao_email: EmailStr | None = Field(serialization_alias="kakaoEmail")
+    kakao_linked: bool = Field(serialization_alias="kakaoLinked")
+
+
 class AuthResponse(Dto):
     access_token: str = Field(serialization_alias="accessToken")
     token_type: str = Field(default="Bearer", serialization_alias="tokenType")

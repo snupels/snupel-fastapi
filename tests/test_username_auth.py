@@ -274,6 +274,8 @@ def test_kakao_placeholder_upgrade_keeps_identity_and_passport(database, auth_en
             calls += 1
             return None if calls == 1 else await original_lookup(email)
         monkeypatch.setattr(repo, "find_user_by_email", initially_absent)
+    if scenario == "missing":
+        asyncio.run(repo.update_profile(user, kakao_email="previous@example.com"))
     monkeypatch.setattr("app.services.auth.fetch_profile", lambda *_:
         ("77", None if scenario == "missing" else "Received@Example.com"))
     body = OAuthLoginRequest(code="code", state="state", redirectUri="https://sportspassport.kr/login/")
@@ -281,6 +283,11 @@ def test_kakao_placeholder_upgrade_keeps_identity_and_passport(database, auth_en
     assert result.user.id == user.id and result.user.username == "kakao_member"
     expected = "received@example.com" if scenario == "upgrade" else original_email
     assert result.user.email == expected and user.email == expected
+    assert user.kakao_email == (None if scenario == "missing" else "received@example.com")
+    email_info = asyncio.run(AuthService(repo).email_info(LoginUser(user.id, user.email)))
+    assert email_info.user_id == user.id and email_info.kakao_linked
+    assert email_info.kakao_email == user.kakao_email
+    assert "kakaoEmail" not in result.user.model_dump(by_alias=True)
     assert not result.user.onboarding_required and user.terms_agreed_at == agreed_at
     assert session.scalar(sa.select(Passport.id).where(Passport.user_id == user.id)) == passport_id
     assert session.scalar(sa.select(SocialAccount.user_id)) == user.id
@@ -376,7 +383,7 @@ def test_account_reminder_emails_username_or_legacy_login_identifier(database, a
 
 @pytest.fixture
 def api_service(auth_environment):
-    user = SimpleNamespace(id=7, email="private@example.com", username="taken_user", password_hash="hashed:password123", nickname="비공개회원")
+    user = SimpleNamespace(id=7, email="private@example.com", kakao_email="verified@example.com", username="taken_user", password_hash="hashed:password123", nickname="비공개회원")
     created_codes = []
 
     class Repository:
@@ -398,6 +405,9 @@ def api_service(auth_environment):
         async def find_user_by_id(self, item_id, **_):
             return user if item_id == user.id else None
 
+        async def has_social_provider(self, user_id, provider):
+            return user_id == user.id and provider == "kakao"
+
         async def create_reset_code(self, **values):
             created_codes.append(values)
 
@@ -416,6 +426,26 @@ def api_service(auth_environment):
     finally:
         app.dependency_overrides.pop(get_auth_service, None)
         app.dependency_overrides.pop(auth_routes.rate_limit, None)
+
+
+def test_email_info_is_private_owner_only_and_preserves_auth_contract(api_service):
+    user, _ = api_service
+    with TestClient(app) as client:
+        assert client.get("/api/auth/email-info").status_code == 401
+        token = sign_access_token(LoginUser(user.id, user.email))[0]
+        headers = {"Authorization": f"Bearer {token}"}
+        response = client.get("/api/auth/email-info?userId=999", headers=headers)
+        assert response.status_code == 200
+        assert "no-store" in response.headers["cache-control"]
+        assert response.json() == {
+            "userId": user.id, "accountEmail": user.email,
+            "kakaoEmail": user.kakao_email, "kakaoLinked": True,
+        }
+        assert "kakaoEmail" not in client.get("/api/auth/me", headers=headers).json()
+        missing_token = sign_access_token(LoginUser(999, "absent@example.com"))[0]
+        assert client.get("/api/auth/email-info", headers={"Authorization": f"Bearer {missing_token}"}).status_code == 404
+        assert client.patch("/api/auth/me", headers=headers, json={"kakaoEmail": "forged@example.com"}).status_code == 400
+    assert User.kakao_email in UserAdmin.form_excluded_columns
 
 
 def test_username_availability_query_is_normalized_limited_and_returns_no_pii(api_service, monkeypatch):

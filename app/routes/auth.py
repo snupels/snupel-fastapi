@@ -10,6 +10,7 @@ from app.deps.auth import LoginUser, require_user, require_authenticated_user
 from app.deps.rate_limit import RateLimiter
 from app.schemas.auth import (
     AccountReminderRequest,
+    AccountEmailInfo,
     AuthProvider,
     AuthResponse,
     LoginRequest,
@@ -87,6 +88,16 @@ async def me(
     service: AuthService = Depends(get_auth_service),
 ):
     return await service.me(actor)
+
+
+@router.get("/email-info", response_model=AccountEmailInfo)
+async def email_info(
+    response: Response,
+    actor: LoginUser = Depends(require_authenticated_user),
+    service: AuthService = Depends(get_auth_service),
+):
+    response.headers["Cache-Control"] = "private, no-store"
+    return await service.email_info(actor)
 
 
 @router.patch("/me", response_model=AuthUser)
