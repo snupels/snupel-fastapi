@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import RedirectResponse
 
 from app.exceptions import ApiError
-from app.deps.auth import LoginUser, require_user
+from app.deps.auth import LoginUser, require_user, require_authenticated_user
 from app.deps.rate_limit import RateLimiter
 from app.schemas.auth import (
     AccountReminderRequest,
@@ -83,7 +83,7 @@ async def login(body: LoginRequest, service: AuthService = Depends(get_auth_serv
 
 @router.get("/me", response_model=AuthUser)
 async def me(
-    actor: LoginUser = Depends(require_user),
+    actor: LoginUser = Depends(require_authenticated_user),
     service: AuthService = Depends(get_auth_service),
 ):
     return await service.me(actor)
@@ -92,16 +92,24 @@ async def me(
 @router.patch("/me", response_model=AuthUser)
 async def update_me(
     body: ProfileUpdateRequest,
-    actor: LoginUser = Depends(require_user),
+    actor: LoginUser = Depends(require_authenticated_user),
     service: AuthService = Depends(get_auth_service),
 ):
     return await service.update_profile(actor, body)
 
 
+@router.post("/complete-onboarding", response_model=AuthResponse)
+async def complete_onboarding(
+    actor: LoginUser = Depends(require_authenticated_user),
+    service: AuthService = Depends(get_auth_service),
+):
+    return await service.complete_onboarding(actor)
+
+
 @router.post("/profile-photo/upload-url", response_model=ProfileUploadResponse)
 async def profile_photo_upload_url(
     body: ProfileUploadRequest,
-    actor: LoginUser = Depends(require_user),
+    actor: LoginUser = Depends(require_authenticated_user),
     service: AuthService = Depends(get_auth_service),
 ):
     return await service.profile_upload(actor, body.content_type)

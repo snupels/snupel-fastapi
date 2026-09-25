@@ -18,6 +18,14 @@ def admins() -> set[str]:
     }
 
 
+def mission_reviewers() -> set[str]:
+    return admins() | {
+        email.strip().lower()
+        for email in os.getenv("MISSION_REVIEWER_EMAILS", "").split(",")
+        if email.strip()
+    }
+
+
 def production_secret(name: str, value: str | None) -> str | None:
     if os.getenv("ENVIRONMENT") == "production" and (
         not value or len(value.encode()) < 32

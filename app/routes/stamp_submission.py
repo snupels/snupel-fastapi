@@ -2,7 +2,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, status
 
-from app.deps.auth import LoginUser, optional_user, require_admin, require_user
+from app.deps.auth import LoginUser, optional_user, require_mission_reviewer, require_user
+from app.config import mission_reviewers
 from app.models import SubmissionStatus
 from app.schemas.common import Pagination
 from app.schemas.stamp_submission import (
@@ -22,6 +23,20 @@ from app.services.stamp_submission import get_stamp_submission_service
 from app.schemas.community_profile import CommunityProfileResponse
 
 router = APIRouter(tags=["Stamp submissions"])
+
+
+@router.get("/api/me/mission-review-permission")
+def review_permission(actor: LoginUser = Depends(require_user)) -> dict[str, bool]:
+    return {"canReviewMissions": actor.email.lower() in mission_reviewers()}
+
+
+@router.delete("/api/stamp-submissions/{item_id}/feed", status_code=204)
+async def delete_feed(
+    item_id: int = Path(gt=0),
+    actor: LoginUser = Depends(require_user),
+    service=Depends(get_stamp_submission_service),
+):
+    await service.delete_from_feed(item_id, actor)
 
 
 @router.post("/api/stamp-submissions/upload-url", response_model=UploadUrlResponse)
@@ -209,7 +224,7 @@ async def list_pending(
     submission_status: SubmissionStatus = Query(
         default=SubmissionStatus.pending, alias="status"
     ),
-    _: LoginUser = Depends(require_admin),
+    _: LoginUser = Depends(require_mission_reviewer),
     service=Depends(get_stamp_submission_service),
 ):
     return await service.list_admin(
@@ -223,7 +238,7 @@ async def list_pending(
 )
 async def approve(
     item_id: int = Path(gt=0),
-    actor: LoginUser = Depends(require_admin),
+    actor: LoginUser = Depends(require_mission_reviewer),
     service=Depends(get_stamp_submission_service),
 ):
     return await service.review(item_id, actor)
@@ -236,7 +251,7 @@ async def approve(
 async def reject(
     body: RejectSubmission,
     item_id: int = Path(gt=0),
-    actor: LoginUser = Depends(require_admin),
+    actor: LoginUser = Depends(require_mission_reviewer),
     service=Depends(get_stamp_submission_service),
 ):
     return await service.review(item_id, actor, body.reason)

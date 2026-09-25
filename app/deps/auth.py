@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.config import admins, production_secret
+from app.config import admins, mission_reviewers, production_secret
 from app.exceptions import ApiError
 
 DEFAULT_EXPIRES_IN = 60 * 60 * 24 * 7
@@ -21,6 +21,7 @@ bearer = HTTPBearer(auto_error=False)
 class LoginUser:
     id: int
     email: str
+    onboarding_required: bool = False
 
 
 def _secret() -> bytes:
@@ -53,7 +54,8 @@ def sign_access_token(user: LoginUser, now: int | None = None) -> tuple[str, int
     expires_in = access_token_expires_in()
     header = _encode({"alg": "HS256", "typ": "JWT"})
     payload = _encode(
-        {"sub": str(user.id), "email": user.email, "iat": issued_at, "exp": issued_at + expires_in}
+        {"sub": str(user.id), "email": user.email, "iat": issued_at, "exp": issued_at + expires_in,
+         "onboarding_required": user.onboarding_required}
     )
     signing_input = f"{header}.{payload}"
     signature = base64.urlsafe_b64encode(
@@ -78,9 +80,10 @@ def verify_access_token(token: str, now: int | None = None) -> LoginUser | None:
             or not isinstance(body.get("email"), str)
             or not isinstance(body.get("exp"), int)
             or body["exp"] <= current
+            or not isinstance(body.get("onboarding_required", False), bool)
         ):
             return None
-        return LoginUser(user_id, body["email"])
+        return LoginUser(user_id, body["email"], body.get("onboarding_required", False))
     except (
         ValueError,
         KeyError,
@@ -92,15 +95,25 @@ def verify_access_token(token: str, now: int | None = None) -> LoginUser | None:
         return None
 
 
-def optional_user(
+def authenticated_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
 ) -> LoginUser | None:
     return verify_access_token(credentials.credentials) if credentials else None
 
 
-def require_user(user: LoginUser | None = Depends(optional_user)) -> LoginUser:
+def optional_user(user: LoginUser | None = Depends(authenticated_user)) -> LoginUser | None:
+    return user if user and not user.onboarding_required else None
+
+
+def require_authenticated_user(user: LoginUser | None = Depends(authenticated_user)) -> LoginUser:
     if not user:
         raise ApiError(401, "unauthorized", "Login is required.")
+    return user
+
+
+def require_user(user: LoginUser = Depends(require_authenticated_user)) -> LoginUser:
+    if user.onboarding_required:
+        raise ApiError(403, "onboarding_required", "Complete profile and required consents first.")
     return user
 
 
@@ -112,3 +125,9 @@ def require_admin(user: LoginUser = Depends(require_user)) -> LoginUser:
 
 def is_admin(user: LoginUser) -> bool:
     return user.email.lower() in admins()
+
+
+def require_mission_reviewer(user: LoginUser = Depends(require_user)) -> LoginUser:
+    if user.email.lower() not in mission_reviewers():
+        raise ApiError(403, "forbidden", "Mission reviewer access is required.")
+    return user

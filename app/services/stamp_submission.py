@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from app.config.database import get_session
-from app.config import admins
+from app.config import mission_reviewers
 from app.deps.auth import LoginUser
 from app.exceptions import ApiError
 from app.models import SubmissionStatus
@@ -86,6 +86,7 @@ class StampSubmissionService:
                 "updated_at",
             )
         } | {
+            "feed_deleted_at": getattr(row, "feed_deleted_at", None),
             "proof_url": self.storage.proof_url(row.object_key),
             "proof_urls": self._proof_urls(row),
             "submitted_at": row.created_at,
@@ -138,6 +139,7 @@ class StampSubmissionService:
         return {
             "id": row.id,
             "is_demo": bool(getattr(row, "is_demo", False)),
+            "share_to_feed": row.share_to_feed,
             "proof_url": "https://sportspassport.kr/community-demo.svg" if getattr(row, "is_demo", False) else self.storage.proof_url(row.object_key),
             "proof_urls": self._proof_urls(row),
             "caption": row.feed_caption,
@@ -210,7 +212,7 @@ class StampSubmissionService:
         return {"id": author.id, "name": author.nickname or "강원 스포츠 탐험가",
                 "profile_image_url": self._profile_url(author),
                 "follower_count": followers, "following_count": following,
-                "followed_by_me": followed, "is_operator": author.email.lower() in admins()}
+                "followed_by_me": followed, "is_operator": author.email.lower() in mission_reviewers()}
 
     async def follow_user(self, user_id: int, actor: LoginUser, *, following: bool):
         if user_id == actor.id:
@@ -243,20 +245,27 @@ class StampSubmissionService:
 
     async def update_feed_visibility(self, item_id: int, body, user: LoginUser):
         row = await self.repository.get_owned(item_id, user.id)
-        if not row:
+        if not row or getattr(row, "feed_deleted_at", None):
             raise ApiError(404, "not_found", "Stamp submission not found.")
         updated = await self.repository.update_feed_visibility(
             row,
             share_to_feed=body.share_to_feed,
-            feed_caption=body.feed_caption,
+            feed_caption=body.feed_caption if "feed_caption" in body.model_fields_set else row.feed_caption,
         )
         return self._response(updated)
+
+    async def delete_from_feed(self, item_id: int, user: LoginUser):
+        row = await self.repository.get_owned(item_id, user.id)
+        if not row:
+            raise ApiError(404, "not_found", "Stamp submission not found.")
+        await self.repository.delete_from_feed(row)
 
     async def list_admin(
         self, status: SubmissionStatus, *, offset: int = 0, limit: int = 20
     ):
         rows = await self.repository.list_status(status, offset=offset, limit=limit)
-        return [self._response(row) | {"activity": activity} for row, activity in rows]
+        return [self._response(row) | {"activity": activity} |
+                await self.repository.review_context(row) for row, activity in rows]
 
     async def review(self, item_id: int, reviewer: LoginUser, reason: str | None = None):
         row = await self.repository.get(item_id)

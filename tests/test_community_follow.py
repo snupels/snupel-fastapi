@@ -91,7 +91,7 @@ def test_demo_seed_is_idempotent_and_never_awards_stamps():
 
 
 def test_demo_response_uses_no_storage_or_fake_activity():
-    row = SimpleNamespace(id=1, is_demo=True, feed_caption="데모", reviewed_at=datetime.now())
+    row = SimpleNamespace(id=1, is_demo=True, share_to_feed=True, feed_caption="데모", reviewed_at=datetime.now())
     author = SimpleNamespace(id=7, nickname="운영자", profile_image_key=None)
     response = asyncio.run(StampSubmissionService(None, None)._feed_response(
         row, None, author, engagement_values=(0, 0, False)
