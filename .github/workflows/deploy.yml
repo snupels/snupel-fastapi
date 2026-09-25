@@ -48,6 +48,7 @@ jobs:
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           KAKAO_CLIENT_ID: ${{ secrets.KAKAO_CLIENT_ID }}
           KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
+          KAKAO_REQUEST_EMAIL: ${{ vars.KAKAO_REQUEST_EMAIL }}
           MISSION_REVIEWER_EMAILS: ${{ vars.MISSION_REVIEWER_EMAILS }}
         run: |
           python3 - <<'PY' > "$RUNNER_TEMP/oauth-env.json"
@@ -60,6 +61,7 @@ jobs:
               "GOOGLE_CLIENT_SECRET": os.environ.get("GOOGLE_CLIENT_SECRET", ""),
               "KAKAO_CLIENT_ID": os.environ.get("KAKAO_CLIENT_ID", ""),
               "KAKAO_CLIENT_SECRET": os.environ.get("KAKAO_CLIENT_SECRET", ""),
+              "KAKAO_REQUEST_EMAIL": os.environ.get("KAKAO_REQUEST_EMAIL", ""),
               "MISSION_REVIEWER_EMAILS": os.environ.get("MISSION_REVIEWER_EMAILS", ""),
           }))
           PY

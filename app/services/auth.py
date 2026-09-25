@@ -137,6 +137,14 @@ class AuthService:
         )
         user = await self.repository.find_social_user(provider.value, provider_user_id)
         if user:
+            placeholder = f"kakao_{provider_user_id}@oauth.sportspassport.kr"
+            if (provider is AuthProvider.kakao and profile_email
+                    and user.email.lower() == placeholder.lower()):
+                # Keep the same user and awards; never merge existing accounts
+                # or overwrite a separately established account email.
+                user = await self.repository.replace_placeholder_email(
+                    user.id, placeholder, profile_email.strip().lower()
+                )
             return self._response(user)
         email = (
             profile_email or f"{provider.value}_{provider_user_id}@oauth.sportspassport.kr"
