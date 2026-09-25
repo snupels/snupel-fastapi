@@ -78,6 +78,7 @@ def test_authorize_config_errors_and_state_cookie_contract(kakao, monkeypatch):
             assert auth.status_code == 200
             assert "Secure" in auth.headers["set-cookie"]
             assert "HttpOnly" in auth.headers["set-cookie"]
+            assert parse_qs(urlparse(auth.json()["authorizationUrl"]).query)["prompt"] == ["login"]
             state = parse_qs(urlparse(auth.json()["authorizationUrl"]).query)["state"][0]
             body = {"code": "fake", "state": "wrong", "redirectUri": "https://sportspassport.kr/login/"}
             assert client.post("/api/auth/oauth/kakao/login", json=body).json()["error"] == "invalid_oauth_state"
@@ -113,3 +114,15 @@ def test_google_token_exchange_still_requires_secret(monkeypatch):
     with pytest.raises(ApiError) as failure:
         oauth.fetch_profile(AuthProvider.google, "code", "https://sportspassport.kr/login/")
     assert failure.value.code == "oauth_not_configured"
+
+
+def test_kakao_start_also_forces_login_without_affecting_google(kakao, monkeypatch):
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "google-test-client")
+    with TestClient(app) as client:
+        result = client.get("/api/auth/oauth/kakao/start",
+                            params={"redirectUri": "https://sportspassport.kr/login/"},
+                            follow_redirects=False)
+        assert result.status_code == 302
+        assert parse_qs(urlparse(result.headers["location"]).query)["prompt"] == ["login"]
+    google = oauth.authorization_url(AuthProvider.google, "https://sportspassport.kr/login/", "test")
+    assert "prompt" not in parse_qs(urlparse(google).query)

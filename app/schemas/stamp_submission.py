@@ -63,6 +63,7 @@ class StampSubmissionCreate(Dto):
 
 
 class StampSubmissionResponse(TimestampedResponse):
+    feed_deleted_at: datetime | None = Field(default=None, serialization_alias="feedDeletedAt")
     passport_id: int = Field(serialization_alias="passportId")
     stamp_id: int = Field(serialization_alias="stampId")
     object_key: str = Field(serialization_alias="objectKey")
@@ -95,6 +96,8 @@ class SubmissionActivityResponse(OrmDto):
 
 
 class AdminStampSubmissionResponse(StampSubmissionResponse):
+    author_name: str = Field(default="참여자", serialization_alias="authorName")
+    proof_instructions: str | None = Field(default=None, serialization_alias="proofInstructions")
     activity: SubmissionActivityResponse
 
 
@@ -116,6 +119,7 @@ class FeedVisibilityUpdate(Dto):
 
 
 class CommunityFeedResponse(OrmDto):
+    share_to_feed: bool = Field(default=True, serialization_alias="shareToFeed")
     is_demo: bool = Field(default=False, serialization_alias="isDemo")
     id: int = Field(gt=0)
     proof_url: str | None = Field(serialization_alias="proofUrl")

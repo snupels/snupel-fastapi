@@ -84,6 +84,10 @@ def authorization_url(provider: AuthProvider, redirect_uri: str, state: str) -> 
     }
     if config["scope"]:
         params["scope"] = config["scope"]
+    if provider is AuthProvider.kakao:
+        # Do not silently reuse a browser's other Kakao account.
+        # Kakao Talk's in-app browser does not support forced reauthentication.
+        params["prompt"] = "login"
     query = urlencode(params)
     return f"{config['authorization_url']}?{query}"
 

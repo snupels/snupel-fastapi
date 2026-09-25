@@ -1177,6 +1177,7 @@ def test_stamp_submission_community_feed_is_approved_opt_in_and_anonymous():
         id=12,
         object_key="proofs/1/2/feed.jpg",
         feed_caption="정상에서 만나요!",
+        share_to_feed=True,
         reviewed_at=datetime(2026, 5, 15),
     )
     author = SimpleNamespace(id=7, nickname=None, profile_image_key=None)
@@ -1202,6 +1203,7 @@ def test_stamp_submission_community_feed_is_approved_opt_in_and_anonymous():
     )
 
     assert public[0] == {
+        "share_to_feed": True,
         "is_demo": False,
         "id": 12,
         "proof_url": "https://signed.example.com/feed.jpg",
@@ -1244,7 +1246,8 @@ def test_feed_visibility_can_only_update_owned_submission():
 
     repository = Repository()
     service = StampSubmissionService(repository, Storage())
-    body = SimpleNamespace(share_to_feed=True, feed_caption="공개합니다")
+    from app.schemas.stamp_submission import FeedVisibilityUpdate
+    body = FeedVisibilityUpdate(share_to_feed=True, feed_caption="공개합니다")
     user = LoginUser(7, "user@example.com")
 
     with pytest.raises(ApiError) as error:

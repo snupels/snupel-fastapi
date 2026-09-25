@@ -72,11 +72,12 @@ class AuthService:
         )
 
     def _response(self, user) -> AuthResponse:
-        token, expires_in = sign_access_token(LoginUser(user.id, user.email))
+        profile = self._user(user)
+        token, expires_in = sign_access_token(LoginUser(user.id, user.email, profile.onboarding_required))
         return AuthResponse(
             access_token=token,
             expires_in=expires_in,
-            user=self._user(user),
+            user=profile,
         )
 
     async def signup(self, body) -> AuthResponse:
@@ -177,6 +178,14 @@ class AuthService:
         if not user:
             raise ApiError(404, "not_found", "User not found.")
         return self._user(user)
+
+    async def complete_onboarding(self, actor: LoginUser) -> AuthResponse:
+        user = await self.repository.find_user_by_id(actor.id)
+        if not user:
+            raise ApiError(404, "not_found", "User not found.")
+        if self._user(user).onboarding_required:
+            raise ApiError(403, "onboarding_required", "Complete profile and required consents first.")
+        return self._response(user)
 
     async def update_profile(self, actor: LoginUser, body) -> AuthUser:
         assigning_username = "username" in body.model_fields_set

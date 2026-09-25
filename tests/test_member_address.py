@@ -214,7 +214,7 @@ def test_self_profile_api_requires_auth_and_cannot_target_another_member(monkeyp
 
 def test_public_profile_posts_and_comments_never_expose_member_address(monkeypatch):
     author = complete_user(address="PRIVATE-ADDRESS-SENTINEL", address_detail="PRIVATE-DETAIL-SENTINEL")
-    post = SimpleNamespace(id=1, object_key="proofs/demo.jpg", feed_caption="공개 글", reviewed_at=datetime.now())
+    post = SimpleNamespace(id=1, share_to_feed=True, object_key="proofs/demo.jpg", feed_caption="공개 글", reviewed_at=datetime.now())
     comment = SimpleNamespace(id=1, content="공개 댓글", created_at=datetime.now())
 
     class Repository:

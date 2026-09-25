@@ -31,6 +31,7 @@ class StampSubmission(TimestampMixin, Base):
     )
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     share_to_feed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    feed_deleted_at: Mapped[datetime | None] = mapped_column(DateTime)
     feed_caption: Mapped[str | None] = mapped_column(String(300))
     status: Mapped[SubmissionStatus] = mapped_column(
         SqlEnum(SubmissionStatus), default=SubmissionStatus.pending

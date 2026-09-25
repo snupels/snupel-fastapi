@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import case, delete, exists, func, select
+from sqlalchemy import case, delete, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
@@ -152,8 +152,9 @@ class StampSubmissionRepository:
     async def get_owned(self, item_id: int, user_id: int):
         return await self.session.scalar(
             select(StampSubmission)
-            .join(Passport, Passport.id == StampSubmission.passport_id)
-            .where(StampSubmission.id == item_id, Passport.user_id == user_id)
+            .outerjoin(Passport, Passport.id == StampSubmission.passport_id)
+            .where(StampSubmission.id == item_id,
+                   func.coalesce(Passport.user_id, StampSubmission.author_id) == user_id)
             .with_for_update()
         )
 
@@ -203,9 +204,14 @@ class StampSubmissionRepository:
             .join(User, User.id == func.coalesce(Passport.user_id, StampSubmission.author_id))
             .where(
                 StampSubmission.status == SubmissionStatus.approved,
-                StampSubmission.share_to_feed.is_(True),
+                StampSubmission.feed_deleted_at.is_(None),
             )
         )
+        # Private posts are visible only on the owner's own list or detail.
+        if viewer_user_id is not None and (owner_user_id == viewer_user_id or item_id is not None):
+            query = query.where(or_(StampSubmission.share_to_feed.is_(True), User.id == viewer_user_id))
+        else:
+            query = query.where(StampSubmission.share_to_feed.is_(True))
         if owner_user_id is not None:
             query = query.where(User.id == owner_user_id)
         if item_id is not None:
@@ -232,6 +238,7 @@ class StampSubmissionRepository:
                 StampSubmission.id == item_id,
                 StampSubmission.status == SubmissionStatus.approved,
                 StampSubmission.share_to_feed.is_(True),
+                StampSubmission.feed_deleted_at.is_(None),
             )
         )
 
@@ -322,10 +329,32 @@ class StampSubmissionRepository:
         feed_caption: str | None,
     ):
         row.share_to_feed = share_to_feed
-        row.feed_caption = feed_caption if share_to_feed else None
+        row.feed_caption = feed_caption
         await self.session.flush()
         await self.session.refresh(row)
         return row
+
+    async def delete_from_feed(self, row: StampSubmission):
+        # Keep the proof, review and all awards. This is not a submission deletion.
+        row.share_to_feed = False
+        row.feed_deleted_at = row.feed_deleted_at or datetime.now()
+        await self.session.flush()
+
+    async def review_context(self, row: StampSubmission):
+        author = await self.session.scalar(
+            select(User).join(Passport, Passport.user_id == User.id)
+            .where(Passport.id == row.passport_id)
+        )
+        course = await self.session.scalar(
+            select(Course).join(CourseStamp, CourseStamp.course_id == Course.id)
+            .where(CourseStamp.stamp_id == row.stamp_id, Course.is_published.is_(True))
+            .order_by(Course.id).limit(1)
+        )
+        return {
+            "author_name": getattr(author, "nickname", None) or "참여자",
+            "course_title": course.title if course else None,
+            "proof_instructions": course.proof_instructions if course else None,
+        }
 
     async def approve(self, row: StampSubmission, reviewer_id: int):
         await self.session.scalar(
