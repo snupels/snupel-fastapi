@@ -16,6 +16,7 @@ from app.services.auth import get_auth_service
 def kakao(monkeypatch):
     monkeypatch.setenv("KAKAO_CLIENT_ID", " test-client ")
     monkeypatch.delenv("KAKAO_CLIENT_SECRET", raising=False)
+    monkeypatch.delenv("KAKAO_REQUEST_EMAIL", raising=False)
     monkeypatch.setenv("AUTH_ALLOWED_REDIRECT_URIS", "https://sportspassport.kr/login/")
 
 
@@ -126,3 +127,27 @@ def test_kakao_start_also_forces_login_without_affecting_google(kakao, monkeypat
         assert parse_qs(urlparse(result.headers["location"]).query)["prompt"] == ["login"]
     google = oauth.authorization_url(AuthProvider.google, "https://sportspassport.kr/login/", "test")
     assert "prompt" not in parse_qs(urlparse(google).query)
+
+
+def test_kakao_email_scope_requires_explicit_operator_configuration(kakao, monkeypatch):
+    def query():
+        return parse_qs(urlparse(oauth.authorization_url(
+            AuthProvider.kakao, "https://sportspassport.kr/login/", "state")).query)
+    assert "scope" not in query()
+    monkeypatch.setenv("KAKAO_REQUEST_EMAIL", "true")
+    assert query()["scope"] == ["account_email"]
+    assert query()["prompt"] == ["login"]
+    monkeypatch.setenv("KAKAO_REQUEST_EMAIL", "false")
+    assert "scope" not in query()
+
+
+@pytest.mark.parametrize("valid,verified,expected", [
+    (True, True, "member@example.com"), (True, False, None),
+    (False, True, None), (None, None, None), ("false", "true", None),
+])
+def test_only_verified_valid_kakao_email_is_usable(kakao, monkeypatch, valid, verified, expected):
+    monkeypatch.setattr(oauth.httpx, "post", lambda *a, **k: response(200, {"access_token": "test-token"}))
+    monkeypatch.setattr(oauth.httpx, "get", lambda *a, **k: response(200, {
+        "id": 7, "kakao_account": {"email": "member@example.com",
+        "is_email_valid": valid, "is_email_verified": verified}}))
+    assert oauth.fetch_profile(AuthProvider.kakao, "code", "https://sportspassport.kr/login/") == ("7", expected)

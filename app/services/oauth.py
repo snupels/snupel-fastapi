@@ -21,9 +21,8 @@ PROVIDERS = {
         "profile_url": "https://kapi.kakao.com/v2/user/me",
         "client_id_env": "KAKAO_CLIENT_ID",
         "client_secret_env": "KAKAO_CLIENT_SECRET",
-        # The existing Kakao app is not a business app, so account_email is not
-        # available. A stable provider id is sufficient for account creation;
-        # the user completes nickname/profile details in our onboarding flow.
+        # Use console-configured consent items by default. Explicit email
+        # consent must only be requested after the app has that permission.
         "scope": "",
     },
 }
@@ -85,6 +84,8 @@ def authorization_url(provider: AuthProvider, redirect_uri: str, state: str) -> 
     if config["scope"]:
         params["scope"] = config["scope"]
     if provider is AuthProvider.kakao:
+        if os.getenv("KAKAO_REQUEST_EMAIL", "").strip().lower() == "true":
+            params["scope"] = "account_email"
         # Do not silently reuse a browser's other Kakao account.
         # Kakao Talk's in-app browser does not support forced reauthentication.
         params["prompt"] = "login"
@@ -132,7 +133,7 @@ def _fetch_profile(config: dict[str, str], provider: AuthProvider, code: str, re
         account = profile.get("kakao_account") or {}
         account = account if isinstance(account, dict) else {}
         email = account.get("email")
-        if not account.get("is_email_valid") or not account.get("is_email_verified"):
+        if account.get("is_email_valid") is not True or account.get("is_email_verified") is not True:
             email = None
     if not isinstance(provider_id, (str, int)) or str(provider_id) == "":
         raise ApiError(502, "oauth_unavailable", "Invalid social login provider response.")

@@ -2,6 +2,7 @@ from datetime import datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
 from app.models import Passport, PasswordResetCode, SocialAccount, User
 
@@ -72,6 +73,26 @@ class AuthRepository:
         await self.session.flush()
         self.session.add(Passport(user_id=user.id))
         await self.session.flush()
+        await self.session.refresh(user)
+        return user
+
+    async def replace_placeholder_email(self, user_id: int, placeholder: str, email: str) -> User:
+        user = await self.find_user_by_id(user_id, lock=True)
+        if user.email.lower() != placeholder.lower():
+            return user
+        if await self.find_user_by_email(email):
+            return user
+        # A concurrent signup may claim the email after the lookup. Roll back
+        # only this update, keeping the social login and its original user.
+        try:
+            async with self.session.begin_nested():
+                user.email = email
+                await self.session.flush()
+        except IntegrityError:
+            await self.session.refresh(user)
+            if await self.find_user_by_email(email):
+                return user
+            raise
         await self.session.refresh(user)
         return user
 

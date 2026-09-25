@@ -250,6 +250,46 @@ def test_oauth_registration_and_one_time_username_onboarding(database, auth_envi
     assert repeated.user.id == first.user.id and repeated.user.username == "social_member"
 
 
+@pytest.mark.parametrize("scenario", ["upgrade", "missing", "real_email", "collision", "race"])
+def test_kakao_placeholder_upgrade_keeps_identity_and_passport(database, auth_environment, monkeypatch, scenario):
+    repo, session = database
+    monkeypatch.setenv("AUTH_ALLOWED_REDIRECT_URIS", "https://sportspassport.kr/login/")
+    placeholder = "kakao_77@oauth.sportspassport.kr"
+    original_email = "existing@example.com" if scenario == "real_email" else placeholder
+    agreed_at = datetime(2026, 1, 1)
+    user = asyncio.run(repo.create_user(email=original_email, password_hash=None, username="kakao_member",
+        nickname="카카오회원", phone_number="01012345678", terms_agreed_at=agreed_at,
+        privacy_agreed_at=agreed_at))
+    asyncio.run(repo.create_social_account(user_id=user.id, provider="kakao", provider_user_id="77"))
+    passport_id = session.scalar(sa.select(Passport.id).where(Passport.user_id == user.id))
+    if scenario in ("collision", "race"):
+        other = asyncio.run(repo.create_user(email="received@example.com", password_hash=None))
+        other_id = other.id
+    session.commit()
+    if scenario == "race":
+        original_lookup = repo.find_user_by_email
+        calls = 0
+        async def initially_absent(email):
+            nonlocal calls
+            calls += 1
+            return None if calls == 1 else await original_lookup(email)
+        monkeypatch.setattr(repo, "find_user_by_email", initially_absent)
+    monkeypatch.setattr("app.services.auth.fetch_profile", lambda *_:
+        ("77", None if scenario == "missing" else "Received@Example.com"))
+    body = OAuthLoginRequest(code="code", state="state", redirectUri="https://sportspassport.kr/login/")
+    result = asyncio.run(AuthService(repo).oauth_login(AuthProvider.kakao, body))
+    assert result.user.id == user.id and result.user.username == "kakao_member"
+    expected = "received@example.com" if scenario == "upgrade" else original_email
+    assert result.user.email == expected and user.email == expected
+    assert not result.user.onboarding_required and user.terms_agreed_at == agreed_at
+    assert session.scalar(sa.select(Passport.id).where(Passport.user_id == user.id)) == passport_id
+    assert session.scalar(sa.select(SocialAccount.user_id)) == user.id
+    if scenario in ("collision", "race"):
+        assert other.id == other_id and other.email == "received@example.com"
+    # Session remains usable even after the unique-constraint race.
+    session.commit()
+
+
 @pytest.mark.parametrize("legacy", [False, True])
 def test_password_reset_requires_same_username_email_pair_in_request_and_confirm(database, auth_environment, monkeypatch, legacy):
     repo, session = database
