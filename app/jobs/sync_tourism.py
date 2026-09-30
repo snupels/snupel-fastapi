@@ -15,10 +15,6 @@ from app.repositories.activity import ActivityRepository
 
 KOR_BASE = "https://apis.data.go.kr/B551011/KorService2"
 DURUNUBI_URL = "https://apis.data.go.kr/B551011/Durunubi/courseList"
-MOUNTAIN_URL = (
-    "https://apis.data.go.kr/B553662/top100FamtListBasiInfoService/"
-    "getTop100FamtListBasiInfoList"
-)
 SKI_GOLF_DATA_URL = "https://www.data.go.kr/data/3045451/fileData.do"
 MARINE_DATA_URL = "https://www.data.go.kr/data/3045471/fileData.do"
 MARINE_FACILITY_DATA_URL = "https://www.data.go.kr/data/15111483/fileData.do"
@@ -87,7 +83,6 @@ LEPORTS_KEYWORD_SPORT = (
 SOURCE_PRIORITY = {
     "tourapi": 0,
     "durunubi": 1,
-    "mountain100": 1,
     "gangwon_marine_facility": 2,
     "gangwon_marine": 3,
     "gangwon_oxygen_road": 3,
@@ -447,27 +442,6 @@ def durunubi_item(row: dict) -> dict:
     }
 
 
-def mountain_item(row: dict) -> dict:
-    external_id = pick(row, "mntnId", "mtnId", "mtn_id", "mountainId", "frtrlId")
-    return {
-        "external_id": str(external_id) if external_id is not None else "",
-        "category": "sports",
-        "place_name": pick(row, "mntnNm", "mtnNm", "mtn_nm", "mountainName") or "",
-        "representative_image_url": None,
-        "sport_name": "hiking",
-        "region": "강원특별자치도",
-        "sigun": sigun(pick(row, "addrNm", "ctpvNm", "addr", "address")),
-        "latitude": number(pick(row, "lat", "latitude", "mntnLat", "mtnLat")),
-        "longitude": number(pick(row, "lot", "lon", "longitude", "mntnLot", "mtnLon")),
-        "summary": None,
-        "address": pick(row, "addrNm", "ctpvNm", "addr", "address"),
-        "source_url": None,
-        "starts_at": None,
-        "ends_at": None,
-        "source_metadata": {"altitude": pick(row, "aslAltide", "altitude", "mtnHg")},
-    }
-
-
 def ski_golf_item(row: dict) -> dict:
     kind = str(row.get("업태구분명") or "")
     name = str(row.get("업소명") or "").strip()
@@ -772,16 +746,6 @@ class TourismSync:
             for row in await self._pages(DURUNUBI_URL, common)
             if in_gangwon(row)
         ]
-        mountains = None
-        try:
-            mountains = [
-                row
-                for row in await self._pages(MOUNTAIN_URL, {"type": "json"})
-                if in_gangwon(row)
-            ]
-        except httpx.HTTPError:
-            # Keep existing records; an optional source must not block other sources.
-            pass
         ski_golf = await self._file_rows(SKI_GOLF_DATA_URL)
         marine = await self._file_rows(MARINE_DATA_URL)
         marine_facilities = [
@@ -800,14 +764,13 @@ class TourismSync:
                 marine_facility_item(row) for row in marine_facilities
             ],
             "gangwon_oxygen_road": [oxygen_road_item(row) for row in oxygen_roads],
+            "mountain100": [],  # Retire cached rows without deleting linked mission history.
         }
-        if mountains is not None:
-            source_rows["mountain100"] = [mountain_item(row) for row in mountains]
         for rows in source_rows.values():
             await self._fill_locations(rows)
 
         synced_at = datetime.now()
-        result = {} if mountains is not None else {"mountain100_unavailable": 1}
+        result = {}
         for source, rows in source_rows.items():
             result[source] = await self.repository.sync_source(source, rows, synced_at)
         candidates, protected_ids = await self.repository.sports_dedup_candidates()

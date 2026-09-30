@@ -19,7 +19,6 @@ from app.jobs.sync_tourism import (
     items,
     marine_facility_item,
     marine_item,
-    mountain_item,
     olympic_sport_categories,
     oxygen_road_item,
     ski_golf_item,
@@ -72,13 +71,10 @@ def test_tourism_pagination_and_normalization():
         "crsLon": "128.2",
         "sigun": "강릉시",
     }
-    mountain = {"mtnId": "8", "mtnNm": "설악산", "addrNm": "강원특별자치도 속초시"}
     assert in_gangwon(trail)
     assert tourism_item(place)["sigun"] == "강릉시"
     assert durunubi_item(trail)["sigun"] == "강릉시"
-    assert mountain_item(mountain)["sigun"] == "속초시"
     assert durunubi_item(trail)["external_id"] == "7"
-    assert mountain_item(mountain)["place_name"] == "설악산"
 
 
 def test_tourapi_leports_are_normalized_as_sports_with_their_own_image():

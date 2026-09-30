@@ -1,27 +1,23 @@
 import asyncio
-import httpx
 
-from app.jobs.sync_tourism import MOUNTAIN_URL, TourismSync
+from app.jobs.sync_tourism import TourismSync
 
 
-def test_unavailable_mountain_source_preserves_records_and_continues():
+def test_deprecated_mountain_source_is_deactivated_without_api_request():
     sources = []
+    requested = []
 
     class Sync(TourismSync):
         async def _pages(self, url, params):
-            if url == MOUNTAIN_URL:
-                raise httpx.HTTPStatusError(
-                    "unauthorized", request=httpx.Request("GET", "https://example.test"),
-                    response=httpx.Response(401),
-                )
+            requested.append(url)
             return [{"code": "32", "name": "강원"}] if url.endswith("/areaCode2") else []
 
         async def _file_rows(self, _url):
             return []
 
     class Repository:
-        async def sync_source(self, source, *_):
-            sources.append(source)
+        async def sync_source(self, source, items, _timestamp):
+            sources.append((source, items))
             return 0
 
         async def sports_dedup_candidates(self):
@@ -31,6 +27,7 @@ def test_unavailable_mountain_source_preserves_records_and_continues():
             return 0
 
     result = asyncio.run(Sync(None, Repository(), "key").run())
-    assert result["mountain100_unavailable"] == 1
-    assert "mountain100" not in sources
-    assert "tourapi" in sources and "gangwon_marine" in sources
+    assert result["mountain100"] == 0
+    assert ("mountain100", []) in sources
+    assert {"tourapi", "gangwon_marine"}.issubset(source for source, _ in sources)
+    assert all("top100Famt" not in url for url in requested)
