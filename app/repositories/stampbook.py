@@ -2,6 +2,7 @@ from sqlalchemy import and_, case, exists, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import CollectedStamp, Course, CourseStamp, Passport, Stamp, StampCatalog
+from app.repositories.course import CourseRepository
 from app.schemas.stampbook import StampbookFilter, StampbookStatus
 
 
@@ -18,6 +19,7 @@ class StampbookRepository:
             CourseStamp.stamp_id == Stamp.id,
             Course.id == CourseStamp.course_id,
             Course.is_published.is_(True),
+            CourseRepository._visible_course(),
         )
         status = case(
             (
@@ -107,7 +109,7 @@ class StampbookRepository:
                 Course.title.label("course_title"),
             )
             .join(Course, Course.id == CourseStamp.course_id)
-            .where(Course.is_published.is_(True))
+            .where(Course.is_published.is_(True), CourseRepository._visible_course())
             .subquery()
         )
         rows = (

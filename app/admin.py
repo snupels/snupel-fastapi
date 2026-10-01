@@ -33,6 +33,7 @@ from .models import (
     Stamp,
     StampSubmission,
     SubmissionStatus,
+    SyncState,
     User,
 )
 from .repositories.stamp import StampRepository
@@ -313,10 +314,13 @@ class TourismSyncAdmin(BaseView):
     @expose("/tourism-sync", methods=["GET", "POST"])
     async def sync(self, request: Request):
         result = await sync_tourism() if request.method == "POST" else None
+        async with SessionLocal() as session:
+            states = list(await session.scalars(select(SyncState).order_by(SyncState.source)))
         return await self.templates.TemplateResponse(
             request,
             "sqladmin/tourism_sync.html",
-            {"result": result},
+            {"result": result, "states": states,
+             "failed": bool(result and any(key.endswith("_unavailable") for key in result))},
         )
 
 

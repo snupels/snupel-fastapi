@@ -105,13 +105,15 @@ uv run alembic stamp head
 uv run python -m app.jobs.sync_tourism
 ```
 
-동기화 작업은 TourAPI, 두루누비, 산림청·강원도 스포츠 관련 데이터 등을 읽어 `activities` 데이터를 보강합니다. Kakao REST API 키가 있으면 주소와 좌표 보정에도 사용합니다.
+동기화 작업은 국문 TourAPI, 두루누비, 강원도 스포츠 관련 파일 데이터를 읽어 `activities` 데이터를 보강합니다. 기존 산림청 산 목록 API는 폐기되어 더 이상 호출하지 않으며, 해당 캐시 행은 연결된 기록을 보존한 채 비활성화합니다. 국문 TourAPI는 첫 실행에 관광정보 동기화 목록 전체를 대조하고, 이후 매일 한국 시간 전일 `modifiedtime`의 변경분을 반영합니다. 실패한 날짜는 다음 실행에서 순서대로 재처리합니다. `showflag=0`인 콘텐츠는 사용자 화면에서 숨깁니다. 다른 소스는 검증된 전체 목록을 받은 경우에만 해당 소스의 DB 행을 대조합니다. Kakao REST API 키가 있으면 주소와 좌표 보정에도 사용합니다.
+
+소스별 마지막 성공 날짜·시각, 건수, 최근 오류는 `sync_state` 테이블과 `/admin/tourism-sync`에서 확인할 수 있습니다. 한 소스가 실패해도 다른 소스의 성공분은 저장되며, CLI 작업은 실패한 소스가 있으면 종료 코드 1을 반환합니다. `MAIL_*`와 `ADMIN_EMAILS`가 설정되어 있으면 실패 알림을 관리자에게 보냅니다. 마이그레이션을 적용한 뒤 첫 동기화를 실행하세요. 실행 전후 `sync_state`와 `activities`의 소스별 건수를 비교하고, `/admin/tourism-sync`에서 오류를 확인하세요.
 
 운영 서버 예시는 `deploy/`에 있습니다.
 
 - `deploy/snupel-fastapi.service`: API 서버 systemd 서비스
 - `deploy/snupel-tourism-sync.service`: 관광 데이터 동기화 1회 실행 서비스
-- `deploy/snupel-tourism-sync.timer`: 매일 한국 시간 04:00 동기화 타이머
+- `deploy/snupel-tourism-sync.timer`: 매일 한국 시간 08:30 동기화 타이머
 
 ## 관리자 화면
 
