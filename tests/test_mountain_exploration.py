@@ -58,16 +58,14 @@ def test_valley_needs_source_evidence_and_preserves_original_route_text():
     assert result["summary"] == "탐방코스\n입구 → 탐방길\n원문 거리"
 
 
-def test_supplemental_scan_includes_imageless_mountains_without_duplicates():
+def test_sync_list_includes_imageless_mountains():
     calls = []
     class Sync(TourismSync):
         async def _pages(self, url, params):
-            calls.append(params)
-            if params["arrange"] == "Q":
-                return [place("기존 산", firstimage="existing.jpg")]
-            return [place("기존 산"), place("함백산", contentid="new"),
-                    place("산 식당", contentid="food", contenttypeid="39")]
+            calls.append((url, params))
+            return [place("기존 산", firstimage="existing.jpg"),
+                    place("함백산", contentid="new")]
     rows = asyncio.run(Sync(None, None, "test")._load_places({}, "32"))
     assert len(rows) == 2 and {row["contentid"] for row in rows} == {"test", "new"}
     assert next(row for row in rows if row["contentid"] == "test")["firstimage"] == "existing.jpg"
-    assert calls[1]["contentTypeId"] == "12" and calls[1]["arrange"] == "A"
+    assert calls[0][0].endswith("/areaBasedSyncList2") and calls[0][1]["areaCode"] == "32"

@@ -20,6 +20,7 @@ from .stamp_submission import StampSubmission as StampSubmission
 from .stamp_submission import FeedComment as FeedComment
 from .stamp_submission import FeedLike as FeedLike
 from .stamp_submission import UserFollow as UserFollow
+from .sync_state import SyncState as SyncState
 from .user import SocialAccount as SocialAccount
 from .user import PasswordResetCode as PasswordResetCode
 from .user import User as User

@@ -4,14 +4,18 @@ import hashlib
 import io
 import os
 import re
-from datetime import datetime
+import sys
+from datetime import date as calendar_date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from html import unescape
+from zoneinfo import ZoneInfo
 
 import httpx
 
 from app.config.database import SessionLocal
+from app.config import admins
 from app.repositories.activity import ActivityRepository
+from app.services.mail import send_mail
 
 KOR_BASE = "https://apis.data.go.kr/B551011/KorService2"
 DURUNUBI_URL = "https://apis.data.go.kr/B551011/Durunubi/courseList"
@@ -21,6 +25,7 @@ MARINE_FACILITY_DATA_URL = "https://www.data.go.kr/data/15111483/fileData.do"
 OXYGEN_ROAD_DATA_URL = "https://www.data.go.kr/data/3045500/fileData.do"
 KAKAO_ADDRESS_URL = "https://dapi.kakao.com/v2/local/search/address.json"
 KAKAO_COORD_TO_ADDRESS_URL = "https://dapi.kakao.com/v2/local/geo/coord2address.json"
+SEOUL = ZoneInfo("Asia/Seoul")
 LEPORTS_CONTENT_TYPE = "28"
 MOUNTAIN_CATEGORY_CODE = "A01010400"
 # Existing TourAPI places explicitly requested for sports exploration.
@@ -414,6 +419,7 @@ def tourism_item(row: dict, category: str = "tour") -> dict:
         "starts_at": date(row.get("eventstartdate")),
         "ends_at": date(row.get("eventenddate")),
         "source_metadata": source_metadata,
+        "upstream_visible": str(row.get("showflag", "1")) != "0",
     }
 
 
@@ -555,13 +561,19 @@ class TourismSync:
         self.client, self.repository, self.key = client, repository, key
 
     async def _get(self, url: str, params: dict) -> dict:
+        if not self.key:
+            raise RuntimeError("DATA_GO_KR_SERVICE_KEY is required")
         for attempt in range(3):
             try:
                 response = await self.client.get(url, params={"serviceKey": self.key} | params)
                 if response.status_code == 429 or response.status_code >= 500:
                     raise httpx.HTTPStatusError("retryable", request=response.request, response=response)
                 response.raise_for_status()
-                return response.json()
+                payload = response.json()
+                header = payload.get("response", {}).get("header", {})
+                if header.get("resultCode") not in (None, "0000", "00"):
+                    raise ValueError(f"TourAPI resultCode={header['resultCode']}")
+                return payload
             except (httpx.HTTPError, ValueError):
                 if attempt == 2:
                     raise
@@ -572,7 +584,11 @@ class TourismSync:
         page, result = 1, []
         while True:
             payload = await self._get(url, params | {"pageNo": page, "numOfRows": 100})
+            if "totalCount" not in payload["response"]["body"]:
+                raise ValueError(f"Missing totalCount on page {page} from {url}")
             batch, total = items(payload)
+            if not batch and total > len(result):
+                raise ValueError(f"Incomplete page {page} from {url}")
             result.extend(batch)
             if not batch or len(result) >= total:
                 return result
@@ -714,84 +730,182 @@ class TourismSync:
 
     async def _load_places(self, common: dict, area_code: str) -> list[dict]:
         places = await self._pages(
-            f"{KOR_BASE}/areaBasedList2", common | {"areaCode": area_code, "arrange": "Q"}
+            f"{KOR_BASE}/areaBasedSyncList2", common | {"areaCode": area_code}
         )
-        # Retrieve natural attractions independently of image availability.
-        natural_places = await self._pages(
-            f"{KOR_BASE}/areaBasedList2",
-            common | {"areaCode": area_code, "contentTypeId": "12", "arrange": "A"},
-        )
-        places = list({str(row["contentid"]): row for row in [
-            *(row for row in natural_places if mountain_candidate(row)), *places,
-        ] if row.get("contentid")}.values())
         return [
             row
             for row in places
             if str(row.get("contentid")) not in EXCLUDED_TOURISM_CONTENT_IDS
         ]
 
-    async def run(self) -> dict[str, int]:
+    async def _festival_rows(self, common: dict, area_code: str, flags: dict[str, str]) -> list[dict]:
+        today = datetime.now(SEOUL).strftime("%Y%m%d")
+        festivals = await self._pages(
+            f"{KOR_BASE}/searchFestival2",
+            common | {"areaCode": area_code, "eventStartDate": today},
+        )
+        rows = []
+        for row in festivals:
+            content_id = str(row.get("contentid") or "")
+            if not content_id:
+                continue
+            values = tourism_item(row | {"showflag": flags.get(content_id, "1")}, "event")
+            if content_id not in flags:
+                values.pop("upstream_visible")
+            rows.append(values)
+        return rows
+
+    async def _tourapi_day(self, day: calendar_date, *, full: bool) -> int:
         common = {"MobileOS": "ETC", "MobileApp": "Snupel", "_type": "json"}
         codes = await self._pages(f"{KOR_BASE}/areaCode2", common)
         area_code = next(str(row["code"]) for row in codes if "강원" in row.get("name", ""))
-        places = await self._load_places(common, area_code)
+        if full:
+            changed = await self._load_places(common, area_code)
+        else:
+            changed = await self._pages(
+                f"{KOR_BASE}/areaBasedSyncList2",
+                common | {"modifiedtime": day.strftime("%Y%m%d")},
+            )
+        ids = [str(row["contentid"]) for row in changed if row.get("contentid")]
+        if (full and not changed) or len(ids) != len(set(ids)):
+            raise ValueError("empty or duplicate tourism sync list")
+        flags = {str(row["contentid"]): str(row.get("showflag", "1"))
+                 for row in changed if row.get("contentid")}
+        hidden = {content_id for content_id, flag in flags.items() if flag == "0"}
+        places = [row for row in changed
+                  if row.get("contentid") and str(row.get("contenttypeid")) != "15"
+                  and str(row.get("contentid")) not in EXCLUDED_TOURISM_CONTENT_IDS
+                  and str(row.get("showflag", "1")) != "0"
+                  and (str(row.get("areacode")) == area_code
+                       or str(row.get("addr1") or "").startswith("강원"))]
+        if full and not places:
+            raise ValueError("No visible Gangwon places in tourism snapshot")
+        if not full:
+            hidden |= {str(row["contentid"]) for row in changed
+                       if row.get("contentid") and str(row.get("areacode")) != area_code
+                       and not str(row.get("addr1") or "").startswith("강원")}
         await self._fill_hiking_routes(places, common)
         await self._fill_homepages(places, common)
-        festivals = await self._pages(
-            f"{KOR_BASE}/searchFestival2",
-            common | {"areaCode": area_code, "eventStartDate": datetime.now().strftime("%Y%m%d")},
-        )
-        trails = [
-            row
-            for row in await self._pages(DURUNUBI_URL, common)
-            if in_gangwon(row)
-        ]
-        ski_golf = await self._file_rows(SKI_GOLF_DATA_URL)
-        marine = await self._file_rows(MARINE_DATA_URL)
-        marine_facilities = [
-            row
-            for row in await self._file_rows(MARINE_FACILITY_DATA_URL)
-            if "해양레저" in str(row.get("업종") or "")
-        ]
-        oxygen_roads = await self._file_rows(OXYGEN_ROAD_DATA_URL)
-        source_rows = {
-            "tourapi": [tourism_item(row) for row in places]
-            + [tourism_item(row, "event") for row in festivals],
-            "durunubi": [durunubi_item(row) for row in trails],
-            "gangwon_ski_golf": [ski_golf_item(row) for row in ski_golf],
-            "gangwon_marine": [marine_item(row) for row in marine],
-            "gangwon_marine_facility": [
-                marine_facility_item(row) for row in marine_facilities
-            ],
-            "gangwon_oxygen_road": [oxygen_road_item(row) for row in oxygen_roads],
-            "mountain100": [],  # Retire cached rows without deleting linked mission history.
-        }
-        for rows in source_rows.values():
-            await self._fill_locations(rows)
+        rows = [tourism_item(row) for row in places]
+        if full or day == datetime.now(SEOUL).date() - timedelta(days=1):
+            rows += await self._festival_rows(common, area_code, flags)
+        await self._fill_locations(rows)
+        if full:
+            count = await self.repository.sync_source(
+                "tourapi", rows, datetime.now(SEOUL).replace(tzinfo=None)
+            )
+        else:
+            count = await self.repository.sync_changes(
+                "tourapi", rows, datetime.now(SEOUL).replace(tzinfo=None)
+            )
+        await self.repository.hide_upstream_ids("tourapi", hidden)
+        return count
 
-        synced_at = datetime.now()
-        result = {}
-        for source, rows in source_rows.items():
-            result[source] = await self.repository.sync_source(source, rows, synced_at)
-        candidates, protected_ids = await self.repository.sports_dedup_candidates()
-        duplicate_ids = duplicate_activity_ids(candidates, protected_ids)
-        result["duplicates_deactivated"] = (
-            await self.repository.deactivate_activity_ids(duplicate_ids)
+    async def run(self) -> dict[str, int]:
+        target = datetime.now(SEOUL).date() - timedelta(days=1)
+        result: dict[str, int] = {}
+        self.errors: list[str] = []
+        state = await self.repository.sync_state("tourapi")
+        start = state.last_success_date + timedelta(days=1) if state and state.last_success_date else target
+        for day in (start + timedelta(days=index) for index in range(max(0, (target - start).days + 1))):
+            try:
+                async with self.repository.session.begin_nested():
+                    count = await self._tourapi_day(day, full=state is None or state.last_success_date is None)
+                    await self.repository.record_sync("tourapi", day=day, count=count)
+                await self.repository.session.commit()
+                result["tourapi"] = result.get("tourapi", 0) + count
+            except Exception as exc:
+                self.errors.append("tourapi")
+                result["tourapi_unavailable"] = 1
+                await self.repository.record_sync_error("tourapi", type(exc).__name__)
+                await self.repository.session.commit()
+                break
+
+        common = {"MobileOS": "ETC", "MobileApp": "Snupel", "_type": "json"}
+        sources = (
+            ("durunubi", lambda: self._pages(DURUNUBI_URL, common), durunubi_item, True),
+            ("gangwon_ski_golf", lambda: self._file_rows(SKI_GOLF_DATA_URL), ski_golf_item, False),
+            ("gangwon_marine", lambda: self._file_rows(MARINE_DATA_URL), marine_item, False),
+            ("gangwon_marine_facility", lambda: self._file_rows(MARINE_FACILITY_DATA_URL), marine_facility_item, False),
+            ("gangwon_oxygen_road", lambda: self._file_rows(OXYGEN_ROAD_DATA_URL), oxygen_road_item, False),
         )
+        for source, fetch, convert, gangwon_only in sources:
+            try:
+                raw = await fetch()
+                if source == "gangwon_marine_facility":
+                    raw = [row for row in raw if "해양레저" in str(row.get("업종") or "")]
+                if gangwon_only:
+                    raw = [row for row in raw if in_gangwon(row)]
+                rows = [convert(row) for row in raw]
+                if not rows or any(not row["external_id"] or not row["place_name"] for row in rows):
+                    raise ValueError("empty or unidentified source snapshot")
+                if len({row["external_id"] for row in rows}) != len(rows):
+                    raise ValueError("duplicate source IDs in snapshot")
+                previous = await self.repository.sync_state(source)
+                if previous and previous.item_count and len(rows) * 2 < previous.item_count:
+                    raise ValueError("source snapshot shrank by more than half")
+                await self._fill_locations(rows)
+                async with self.repository.session.begin_nested():
+                    result[source] = await self.repository.sync_source(
+                        source, rows, datetime.now(SEOUL).replace(tzinfo=None)
+                    )
+                    await self.repository.record_sync(source, day=None, count=result[source])
+                await self.repository.session.commit()
+            except Exception as exc:
+                self.errors.append(source)
+                result[f"{source}_unavailable"] = 1
+                await self.repository.record_sync_error(source, type(exc).__name__)
+                await self.repository.session.commit()
+        try:
+            async with self.repository.session.begin_nested():
+                result["mountain100"] = await self.repository.sync_source(
+                    "mountain100", [], datetime.now(SEOUL).replace(tzinfo=None)
+                )
+                await self.repository.record_sync("mountain100", day=None, count=0)
+            await self.repository.session.commit()
+        except Exception as exc:
+            result["mountain100_unavailable"] = 1
+            await self.repository.record_sync_error("mountain100", type(exc).__name__)
+            await self.repository.session.commit()
+        try:
+            async with self.repository.session.begin_nested():
+                candidates, protected_ids = await self.repository.sports_dedup_candidates()
+                duplicate_ids = duplicate_activity_ids(candidates, protected_ids)
+                result["duplicates_deactivated"] = await self.repository.deactivate_activity_ids(duplicate_ids)
+                await self.repository.record_sync("duplicates", day=None, count=len(duplicate_ids))
+            await self.repository.session.commit()
+        except Exception as exc:
+            result["duplicates_unavailable"] = 1
+            await self.repository.record_sync_error("duplicates", type(exc).__name__)
+            await self.repository.session.commit()
         return result
 
 
 async def sync_tourism() -> dict[str, int]:
+    if datetime.now(SEOUL).hour < 8:
+        return {"deferred_until_0830": 1}
     key = os.getenv("DATA_GO_KR_SERVICE_KEY")
-    if not key:
-        raise RuntimeError("DATA_GO_KR_SERVICE_KEY is required")
-    async with SessionLocal.begin() as session, httpx.AsyncClient(timeout=20) as client:
-        return await TourismSync(client, ActivityRepository(session), key).run()
+    async with SessionLocal() as session, httpx.AsyncClient(timeout=20) as client:
+        result = await TourismSync(client, ActivityRepository(session), key or "").run()
+    failed = [source.removesuffix("_unavailable") for source in result if source.endswith("_unavailable")]
+    if failed and all(os.getenv(name) for name in ("MAIL_USERNAME", "MAIL_PASSWORD", "MAIL_FROM")):
+        for email in admins():
+            try:
+                await asyncio.to_thread(
+                    send_mail, email, "강원 스포츠 패스포트 관광 데이터 동기화 실패",
+                    "실패한 소스: " + ", ".join(failed) + "\n서버 동기화 로그와 sync_state를 확인해 주세요.",
+                )
+            except Exception as exc:
+                print(f"Sync alert delivery failed: {type(exc).__name__}", file=sys.stderr)
+    return result
 
 
 async def main() -> None:
     counts = await sync_tourism()
     print(" ".join(f"{source}={count}" for source, count in counts.items()))
+    if any(source.endswith("_unavailable") for source in counts):
+        print("Tourism sync failed for one or more sources", file=sys.stderr)
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

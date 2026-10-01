@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, exists, func, literal, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Activity, CollectedStamp, Course, CourseStamp, Passport, Stamp
+from app.models import Activity, CollectedStamp, Course, CourseStamp, Passport, Stamp, SyncState
 from app.models import ActivityCategory
 from app.repositories.base import CrudRepository, dumped
+from app.repositories.course import CourseRepository
 from app.recommendation_sports import recommendation_sport_names
 
 
@@ -27,11 +29,10 @@ class ActivityRepository(CrudRepository):
 
     @staticmethod
     def _available():
-        cutoff = datetime.now() - timedelta(days=10)
+        now = datetime.now(ZoneInfo("Asia/Seoul")).replace(tzinfo=None)
         return and_(
-            Activity.is_active.is_(True),
-            or_(Activity.source.is_(None), Activity.last_synced_at >= cutoff),
-            or_(Activity.ends_at.is_(None), Activity.ends_at >= datetime.now()),
+            Activity.visible(),
+            or_(Activity.ends_at.is_(None), Activity.ends_at >= now),
         )
 
     async def list(self, *, offset: int = 0, limit: int = 20) -> list[Activity]:
@@ -75,6 +76,7 @@ class ActivityRepository(CrudRepository):
             .where(
                 Stamp.activity_id == Activity.id,
                 Course.is_published.is_(True),
+                CourseRepository._visible_course(),
             )
             .correlate(Activity)
         )
@@ -151,6 +153,7 @@ class ActivityRepository(CrudRepository):
             .join(CourseStamp, CourseStamp.stamp_id == Stamp.id)
             .join(Course, Course.id == CourseStamp.course_id)
             .where(Stamp.activity_id == Activity.id, Course.is_published.is_(True))
+            .where(CourseRepository._visible_course())
             .correlate(Activity)
         )
         if category:
@@ -186,6 +189,7 @@ class ActivityRepository(CrudRepository):
             CourseStamp.stamp_id == Stamp.id,
             Course.id == CourseStamp.course_id,
             Course.is_published.is_(True),
+            CourseRepository._visible_course(),
             Course.theme == theme,
         )
         sport_match = func.lower(func.trim(Activity.sport_name)).in_(
@@ -222,7 +226,7 @@ class ActivityRepository(CrudRepository):
             activity.recommendation_sport_match = matches_sport
         return [activity for activity, _, _ in rows]
 
-    async def sync_source(self, source: str, items: list[dict], synced_at: datetime) -> int:
+    async def _sync_items(self, source: str, items: list[dict], synced_at: datetime, *, full: bool) -> int:
         existing = {
             row.external_id: row
             for row in await self.session.scalars(select(Activity).where(Activity.source == source))
@@ -267,6 +271,10 @@ class ActivityRepository(CrudRepository):
                 "last_synced_at": synced_at,
                 "is_active": True,
             }
+            if source == "tourapi":
+                values["upstream_visible"] = values.get(
+                    "upstream_visible", getattr(row, "upstream_visible", True)
+                )
             values["category"] = ActivityCategory(values["category"])
             if row:
                 for key, value in values.items():
@@ -275,18 +283,56 @@ class ActivityRepository(CrudRepository):
                 row = Activity(**values)
                 self.session.add(row)
                 existing[external_id] = row
-        for external_id, row in existing.items():
-            if external_id not in seen:
-                row.is_active = False
+        if full:
+            for external_id, row in existing.items():
+                if external_id not in seen:
+                    row.is_active = False
         await self.session.flush()
         return len(items)
+
+    async def sync_source(self, source: str, items: list[dict], synced_at: datetime) -> int:
+        return await self._sync_items(source, items, synced_at, full=True)
+
+    async def sync_changes(self, source: str, items: list[dict], synced_at: datetime) -> int:
+        return await self._sync_items(source, items, synced_at, full=False)
+
+    async def hide_upstream_ids(self, source: str, external_ids: set[str]) -> None:
+        if external_ids:
+            await self.session.execute(
+                update(Activity)
+                .where(Activity.source == source, Activity.external_id.in_(external_ids))
+                .values(upstream_visible=False)
+            )
+            await self.session.flush()
+
+    async def sync_state(self, source: str) -> SyncState | None:
+        return await self.session.get(SyncState, source)
+
+    async def record_sync(self, source: str, *, day: date | None, count: int) -> None:
+        row = await self.sync_state(source)
+        if row is None:
+            row = SyncState(source=source)
+            self.session.add(row)
+        row.last_success_date = day
+        row.last_success_at = datetime.now(ZoneInfo("Asia/Seoul")).replace(tzinfo=None)
+        row.item_count = count
+        row.last_error = None
+        await self.session.flush()
+
+    async def record_sync_error(self, source: str, error: str) -> None:
+        row = await self.sync_state(source)
+        if row is None:
+            row = SyncState(source=source)
+            self.session.add(row)
+        row.last_error = error[:2000]
+        await self.session.flush()
 
     async def sports_dedup_candidates(self) -> tuple[list[Activity], set[int]]:
         rows = list(
             await self.session.scalars(
                 select(Activity).where(
                     Activity.category == ActivityCategory.sports,
-                    Activity.is_active.is_(True),
+                    Activity.visible(),
                     Activity.source.is_not(None),
                 )
             )

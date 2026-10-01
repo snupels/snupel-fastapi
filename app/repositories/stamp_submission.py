@@ -48,6 +48,9 @@ class StampSubmissionRepository:
                         CourseStamp.stamp_id == stamp_id,
                         Course.id == CourseStamp.course_id,
                         Course.is_published.is_(True),
+                        Stamp.id == CourseStamp.stamp_id,
+                        Activity.id == Stamp.activity_id,
+                        Activity.visible(),
                     )
                 )
             )
@@ -119,7 +122,7 @@ class StampSubmissionRepository:
                 .join(Stamp, Stamp.id == StampSubmission.stamp_id)
                 .join(Activity, Activity.id == Stamp.activity_id)
                 .outerjoin(StampCatalog, StampCatalog.id == Stamp.stamp_catalog_id)
-                .where(Passport.user_id == user_id)
+                .where(Passport.user_id == user_id, Activity.visible())
                 .order_by(StampSubmission.id.desc())
                 .offset(offset)
                 .limit(limit)
@@ -205,6 +208,7 @@ class StampSubmissionRepository:
             .where(
                 StampSubmission.status == SubmissionStatus.approved,
                 StampSubmission.feed_deleted_at.is_(None),
+                or_(Activity.id.is_(None), Activity.visible()),
             )
         )
         # Private posts are visible only on the owner's own list or detail.
@@ -239,6 +243,12 @@ class StampSubmissionRepository:
                 StampSubmission.status == SubmissionStatus.approved,
                 StampSubmission.share_to_feed.is_(True),
                 StampSubmission.feed_deleted_at.is_(None),
+                ~exists(
+                    select(Stamp.id)
+                    .join(Activity, Activity.id == Stamp.activity_id)
+                    .where(Stamp.id == StampSubmission.stamp_id, ~Activity.visible())
+                    .correlate(StampSubmission)
+                ),
             )
         )
 

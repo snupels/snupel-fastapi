@@ -326,7 +326,7 @@ def test_tourism_sync_completely_excludes_requested_training_sites():
         async def _pages(self, url, _params):
             if url.endswith("/areaCode2"):
                 return [{"code": "32", "name": "강원"}]
-            if url.endswith("/areaBasedList2"):
+            if url.endswith("/areaBasedSyncList2"):
                 return [
                     {"contentid": "131167", "title": "철원청소년회관"},
                     {"contentid": "131169", "title": "강원 세계잼버리 수련장"},
@@ -335,25 +335,7 @@ def test_tourism_sync_completely_excludes_requested_training_sites():
                 ]
             return []
 
-        async def _file_rows(self, _url):
-            return []
-
-    class Repository:
-        sources = {}
-
-        async def sync_source(self, source, rows, _synced_at):
-            self.sources[source] = rows
-            return len(rows)
-
-        async def sports_dedup_candidates(self):
-            return [], set()
-
-        async def deactivate_activity_ids(self, _ids):
-            return 0
-
-    repository = Repository()
-    asyncio.run(Sync(None, repository, "key").run())
-    assert repository.sources["tourapi"] == []
+    assert asyncio.run(Sync(None, None, "key")._load_places({}, "32")) == []
 
 
 def test_activity_categories_require_sport_type_only_for_sports():
@@ -405,9 +387,32 @@ def test_tourism_sync_requests_durunubi_json():
         async def _file_rows(self, _url):
             return []
 
+    from contextlib import asynccontextmanager
+
     class Repository:
+        session = None
+
+        async def sync_state(self, _source):
+            return None
+
+        @asynccontextmanager
+        async def begin_nested(self):
+            yield
+
         async def sync_source(self, *_):
             return 0
+
+        async def record_sync(self, *_args, **_kwargs):
+            pass
+
+        async def record_sync_error(self, *_args):
+            pass
+
+        async def hide_upstream_ids(self, *_args):
+            pass
+
+        async def commit(self):
+            pass
 
         async def sports_dedup_candidates(self):
             return [], set()
@@ -415,7 +420,9 @@ def test_tourism_sync_requests_durunubi_json():
         async def deactivate_activity_ids(self, _ids):
             return 0
 
-    asyncio.run(Sync(None, Repository(), "key").run())
+    repository = Repository()
+    repository.session = repository
+    asyncio.run(Sync(None, repository, "key").run())
     assert next(params for url, params in calls if "Durunubi" in url)["_type"] == "json"
 
 

@@ -5,13 +5,21 @@
     <div class="card-header"><h3 class="card-title">Tourism crawler sync</h3></div>
     <div class="card-body">
       {% if result %}
-      <div class="alert alert-success" role="alert">
+      <div class="alert {% if failed %}alert-danger{% else %}alert-success{% endif %}" role="alert">
         {% for source, count in result.items() %}{{ source }}={{ count }}{% if not loop.last %}, {% endif %}{% endfor %}
       </div>
       {% endif %}
       <form method="post">
         <button class="btn btn-primary" type="submit">Sync now</button>
       </form>
+      <table class="table mt-4">
+        <thead><tr><th>소스</th><th>마지막 성공 날짜</th><th>마지막 성공 시각</th><th>건수</th><th>최근 오류</th></tr></thead>
+        <tbody>
+          {% for state in states %}
+          <tr><td>{{ state.source }}</td><td>{{ state.last_success_date or '-' }}</td><td>{{ state.last_success_at or '-' }}</td><td>{{ state.item_count if state.item_count is not none else '-' }}</td><td>{{ state.last_error or '-' }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   </div>
 </div>
