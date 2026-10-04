@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.jobs.sync_tourism import SEOUL, TourismSync
+from app.jobs.sync_tourism import MARINE_DATA_URL, SEOUL, TourismSync
 from app.repositories.activity import ActivityRepository
 from app.repositories.course import CourseRepository
 from app.repositories.me import MeRepository
@@ -111,6 +111,64 @@ def test_missed_dates_resume_after_failure(monkeypatch):
     assert processed == [target - timedelta(days=2), target - timedelta(days=1),
                          target - timedelta(days=1), target]
     assert state.last_success_date == target
+
+
+def test_marine_sync_ignores_identical_csv_rows_but_rejects_conflicting_ids():
+    item = {"시군": "고성군", "상호": "천진레저", "주소": "고성군 토성면 천진해변길 27"}
+
+    class Repository:
+        session = None
+
+        @asynccontextmanager
+        async def begin_nested(self):
+            yield
+
+        async def sync_state(self, source):
+            if source == "tourapi":
+                return SimpleNamespace(last_success_date=datetime.now(SEOUL).date())
+            return None
+
+        async def sync_source(self, source, rows, _at):
+            if source == "gangwon_marine":
+                self.marine_rows = rows
+            return len(rows)
+
+        async def record_sync(self, *_args, **_kwargs):
+            pass
+
+        async def record_sync_error(self, *_args):
+            pass
+
+        async def commit(self):
+            pass
+
+        async def sports_dedup_candidates(self):
+            return [], set()
+
+        async def deactivate_activity_ids(self, _ids):
+            return 0
+
+    class Sync(TourismSync):
+        async def _pages(self, _url, _params):
+            return []
+
+        async def _file_rows(self, url):
+            return self.marine_input if url == MARINE_DATA_URL else []
+
+        async def _fill_locations(self, _rows):
+            pass
+
+    repository = Repository()
+    repository.session = repository
+    sync = Sync(None, repository, "key")
+    sync.marine_input = [item, item.copy()]
+    result = asyncio.run(sync.run())
+    assert result["gangwon_marine"] == 1
+    assert len(repository.marine_rows) == 1
+
+    sync.marine_input = [item, item | {"시군": "속초시"}]
+    result = asyncio.run(sync.run())
+    assert result["gangwon_marine_unavailable"] == 1
 
 
 def test_delta_upsert_preserves_unchanged_and_hidden_rows():

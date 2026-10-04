@@ -832,6 +832,8 @@ class TourismSync:
         for source, fetch, convert, gangwon_only in sources:
             try:
                 raw = await fetch()
+                if source == "gangwon_marine":
+                    raw = list({tuple(row.items()): row for row in raw}.values())
                 if source == "gangwon_marine_facility":
                     raw = [row for row in raw if "해양레저" in str(row.get("업종") or "")]
                 if gangwon_only:
