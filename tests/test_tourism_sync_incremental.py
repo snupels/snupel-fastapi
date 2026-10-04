@@ -1,6 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -202,6 +203,12 @@ def test_inactive_activities_remain_in_private_history_but_not_public_detail():
     assert "activities.is_active IS true" in detail
     assert all("activities.upstream_visible IS true" in sql for sql in history)
     assert all("activities.is_active IS true" not in sql for sql in history)
+
+
+def test_deploy_does_not_fail_when_an_external_tourism_source_is_unavailable():
+    workflow = Path(".github/workflows/deploy.yml").read_text(encoding="utf-8")
+    assert "systemctl restart snupel-fastapi snupel-tourism-sync.timer" in workflow
+    assert "systemctl restart snupel-tourism-sync.service" not in workflow
 
 
 def test_incomplete_api_page_is_rejected():
