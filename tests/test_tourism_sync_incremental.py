@@ -174,6 +174,36 @@ def test_visibility_filters_keep_hidden_activities_out_of_queries():
     assert all("activities.upstream_visible IS true" in sql for sql in session.statements)
 
 
+def test_inactive_activities_remain_in_private_history_but_not_public_detail():
+    class Result:
+        def all(self):
+            return []
+
+        def mappings(self):
+            return self
+
+    class Session:
+        statements = []
+
+        async def scalar(self, statement):
+            self.statements.append(str(statement))
+            return None
+
+        async def execute(self, statement):
+            self.statements.append(str(statement))
+            return Result()
+
+    session = Session()
+    asyncio.run(ActivityRepository(session).get(1))
+    asyncio.run(MeRepository(session).activity_history(1, q=None, status=None, limit=20))
+    asyncio.run(StampSubmissionRepository(session).list_user(1))
+
+    detail, *history = session.statements
+    assert "activities.is_active IS true" in detail
+    assert all("activities.upstream_visible IS true" in sql for sql in history)
+    assert all("activities.is_active IS true" not in sql for sql in history)
+
+
 def test_incomplete_api_page_is_rejected():
     class Sync(TourismSync):
         async def _get(self, _url, _params):

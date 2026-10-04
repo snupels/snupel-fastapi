@@ -122,7 +122,7 @@ class StampSubmissionRepository:
                 .join(Stamp, Stamp.id == StampSubmission.stamp_id)
                 .join(Activity, Activity.id == Stamp.activity_id)
                 .outerjoin(StampCatalog, StampCatalog.id == Stamp.stamp_catalog_id)
-                .where(Passport.user_id == user_id, Activity.visible())
+                .where(Passport.user_id == user_id, Activity.upstream_visible.is_(True))
                 .order_by(StampSubmission.id.desc())
                 .offset(offset)
                 .limit(limit)

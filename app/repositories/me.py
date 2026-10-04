@@ -143,7 +143,7 @@ class MeRepository:
             .join(Passport, Passport.id == StampSubmission.passport_id)
             .join(Stamp, Stamp.id == StampSubmission.stamp_id)
             .join(Activity, Activity.id == Stamp.activity_id)
-            .where(Passport.user_id == user_id, Activity.visible())
+            .where(Passport.user_id == user_id, Activity.upstream_visible.is_(True))
         )
         if status and status != "collected":
             query = query.where(StampSubmission.status == status)
@@ -168,7 +168,7 @@ class MeRepository:
             .join(Passport, Passport.id == CollectedStamp.passport_id)
             .join(Stamp, Stamp.id == CollectedStamp.stamp_id)
             .join(Activity, Activity.id == Stamp.activity_id)
-            .where(Passport.user_id == user_id, Activity.visible())
+            .where(Passport.user_id == user_id, Activity.upstream_visible.is_(True))
         )
         if status and status != "collected":
             query = query.where(False)
