@@ -3,6 +3,7 @@ from decimal import Decimal
 from datetime import datetime
 
 from sqlalchemy import (
+    and_,
     Boolean,
     DateTime,
     Enum as SqlEnum,
@@ -48,6 +49,11 @@ class Activity(TimestampMixin, Base):
     source_metadata: Mapped[dict | None] = mapped_column("metadata", JSON)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    upstream_visible: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+
+    @classmethod
+    def visible(cls):
+        return and_(cls.is_active.is_(True), cls.upstream_visible.is_(True))
 
 
 class Stamp(TimestampMixin, Base):

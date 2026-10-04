@@ -1,4 +1,4 @@
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Activity, ActivityCategory, Course, CourseStamp, Stamp
@@ -17,12 +17,34 @@ class CourseRepository(CrudRepository):
                 values[key] = str(values[key])
         return values
 
+    @staticmethod
+    def _visible_course():
+        hidden_stop = (
+            select(CourseStamp.id)
+            .join(Stamp, Stamp.id == CourseStamp.stamp_id)
+            .join(Activity, Activity.id == Stamp.activity_id)
+            .where(CourseStamp.course_id == Course.id, ~Activity.visible())
+            .correlate(Course)
+        )
+        return ~exists(hidden_stop)
+
+    async def list(self, *, offset: int = 0, limit: int = 20):
+        return list(await self.session.scalars(
+            select(Course).where(self._visible_course()).order_by(Course.id).offset(offset).limit(limit)
+        ))
+
+    async def get(self, item_id: int):
+        return await self.session.scalar(
+            select(Course).where(Course.id == item_id, self._visible_course())
+        )
+
     async def create_generated_mission(self, body, stops) -> Course | None:
         activity_ids = [stop["activity_id"] for stop in stops]
         stamp_rows = (
             await self.session.execute(
                 select(Stamp.activity_id, func.min(Stamp.id).label("stamp_id"))
-                .where(Stamp.activity_id.in_(activity_ids))
+                .join(Activity, Activity.id == Stamp.activity_id)
+                .where(Stamp.activity_id.in_(activity_ids), Activity.visible())
                 .group_by(Stamp.activity_id)
             )
         ).all()
@@ -69,7 +91,7 @@ class CourseRepository(CrudRepository):
             )
             .join(Stamp, Stamp.id == CourseStamp.stamp_id)
             .join(Activity, Activity.id == Stamp.activity_id)
-            .where(CourseStamp.course_id == course_id)
+            .where(CourseStamp.course_id == course_id, Activity.visible())
             .order_by(CourseStamp.position, CourseStamp.id)
         )
         return rows.mappings().all()

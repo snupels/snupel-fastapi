@@ -49,7 +49,7 @@ class MeRepository:
         query = (
             select(SavedActivity, Activity)
             .join(Activity, Activity.id == SavedActivity.activity_id)
-            .where(SavedActivity.user_id == user_id)
+            .where(SavedActivity.user_id == user_id, Activity.visible())
         )
         if events_only:
             # Both events and festivals use the API's event category.
@@ -64,7 +64,9 @@ class MeRepository:
         ).all()
 
     async def activity_exists(self, activity_id: int) -> bool:
-        return await self.session.get(Activity, activity_id) is not None
+        return await self.session.scalar(
+            select(Activity.id).where(Activity.id == activity_id, Activity.visible())
+        ) is not None
 
     async def saved_activity(self, user_id: int, activity_id: int):
         return await self.session.scalar(
@@ -141,7 +143,7 @@ class MeRepository:
             .join(Passport, Passport.id == StampSubmission.passport_id)
             .join(Stamp, Stamp.id == StampSubmission.stamp_id)
             .join(Activity, Activity.id == Stamp.activity_id)
-            .where(Passport.user_id == user_id)
+            .where(Passport.user_id == user_id, Activity.upstream_visible.is_(True))
         )
         if status and status != "collected":
             query = query.where(StampSubmission.status == status)
@@ -166,7 +168,7 @@ class MeRepository:
             .join(Passport, Passport.id == CollectedStamp.passport_id)
             .join(Stamp, Stamp.id == CollectedStamp.stamp_id)
             .join(Activity, Activity.id == Stamp.activity_id)
-            .where(Passport.user_id == user_id)
+            .where(Passport.user_id == user_id, Activity.upstream_visible.is_(True))
         )
         if status and status != "collected":
             query = query.where(False)
@@ -193,7 +195,7 @@ class MeRepository:
                 SavedActivity.created_at.label("occurred_at"),
             )
             .join(Activity, Activity.id == SavedActivity.activity_id)
-            .where(SavedActivity.user_id == user_id)
+            .where(SavedActivity.user_id == user_id, Activity.visible())
         )
         if status and status != "collected":
             query = query.where(False)
