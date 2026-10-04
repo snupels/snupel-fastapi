@@ -30,6 +30,7 @@ class Course(TimestampMixin, Base):
     official_url: Mapped[str | None] = mapped_column(Text)
     official_label: Mapped[str | None] = mapped_column(String(100))
     is_published: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    is_closed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
     def __str__(self) -> str:
         return f"{self.title or '제목 없는 미션'} (#{self.id})"

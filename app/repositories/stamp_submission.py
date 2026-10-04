@@ -48,6 +48,7 @@ class StampSubmissionRepository:
                         CourseStamp.stamp_id == stamp_id,
                         Course.id == CourseStamp.course_id,
                         Course.is_published.is_(True),
+                        Course.is_closed.is_(False),
                         Stamp.id == CourseStamp.stamp_id,
                         Activity.id == Stamp.activity_id,
                         Activity.visible(),

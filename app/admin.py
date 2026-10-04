@@ -429,6 +429,7 @@ class CourseAdmin(DefaultAdmin, model=Course):
         Course.theme,
         Course.sport_name,
         Course.is_published,
+        Course.is_closed,
         Course.updated_at,
     ]
     column_labels = {
@@ -436,6 +437,7 @@ class CourseAdmin(DefaultAdmin, model=Course):
         Course.theme: "테마",
         Course.sport_name: "종목",
         Course.is_published: "공개",
+        Course.is_closed: "신규 인증 마감",
         Course.updated_at: "수정일",
         "category": "분류",
         "recommended_companion": "추천 동행",
@@ -455,6 +457,7 @@ class CourseAdmin(DefaultAdmin, model=Course):
         "estimated_duration_minutes",
         "representative_image_url",
         "is_published",
+        "is_closed",
     ]
 
 

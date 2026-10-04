@@ -23,6 +23,7 @@ class CourseCreate(Dto):
     official_url: AnyHttpUrl | None = None
     official_label: str | None = Field(default=None, max_length=100)
     is_published: bool = False
+    is_closed: bool = False
 
     @model_validator(mode="after")
     def sport_category(self) -> Self:
@@ -50,6 +51,7 @@ class CoursePatch(Dto):
     official_url: AnyHttpUrl | None = None
     official_label: str | None = Field(default=None, max_length=100)
     is_published: bool | None = None
+    is_closed: bool | None = None
 
     @model_validator(mode="after")
     def not_empty(self) -> Self:
@@ -75,6 +77,7 @@ class CourseResponse(TimestampedResponse):
     official_url: str | None = Field(default=None, serialization_alias="officialUrl")
     official_label: str | None = Field(default=None, serialization_alias="officialLabel")
     is_published: bool = Field(default=False, serialization_alias="isPublished")
+    is_closed: bool = Field(default=False, serialization_alias="isClosed")
 
 
 class CourseItineraryStop(Dto):
