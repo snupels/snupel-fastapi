@@ -143,3 +143,26 @@ def test_feed_owner_authorization_validation_and_rejection(data):
         assert client.post(reject, headers=headers(3), json={"reason": "장소 표지가 보이지 않습니다"}).status_code == 200
         assert row.status == SubmissionStatus.rejected
         assert client.get("/api/community-feed/me", headers=headers()).json() == []
+
+
+def test_closed_mission_blocks_new_proofs_but_preserves_pending_review_and_awards(data):
+    session, service, row = data
+    assert run(service.repository.valid_target(1, 1, 1)) is True
+    mission = session.get(Course, 1)
+    mission.is_closed = True
+    session.flush()
+    assert run(service.repository.valid_target(1, 1, 1)) is False
+    assert mission.is_published is True
+    with TestClient(app) as client:
+        assert client.post("/api/stamp-submissions/upload-url", headers=headers(), json={
+            "stampId": 1, "contentType": "image/jpeg",
+        }).status_code == 404
+        assert client.post("/api/stamp-submissions", headers=headers(), json={
+            "stampId": 1, "objectKey": "proofs/1/1/late.jpg",
+        }).status_code == 404
+        assert client.post("/api/admin/stamp-submissions/1/approve", headers=headers(3)).status_code == 200
+        assert row.status == SubmissionStatus.approved
+        assert session.scalar(sa.select(sa.func.count()).select_from(CollectedStamp)) == 1
+        assert session.scalar(sa.select(sa.func.count()).select_from(CollectedBadge)) == 1
+        assert len(run(service.repository.completed_mission_facts(1))) == 1
+        assert client.get("/api/stamp-submissions", headers=headers()).json()[0]["courseTitle"] == "테스트 미션"
