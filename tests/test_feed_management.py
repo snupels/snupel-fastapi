@@ -153,6 +153,11 @@ def test_closed_mission_blocks_new_proofs_but_preserves_pending_review_and_award
     session.flush()
     assert run(service.repository.valid_target(1, 1, 1)) is False
     assert mission.is_published is True
+    mission.is_closed = False
+    session.flush()
+    assert run(service.repository.valid_target(1, 1, 1)) is True
+    mission.is_closed = True
+    session.flush()
     with TestClient(app) as client:
         assert client.post("/api/stamp-submissions/upload-url", headers=headers(), json={
             "stampId": 1, "contentType": "image/jpeg",

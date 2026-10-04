@@ -4,7 +4,7 @@ from pathlib import Path
 import sqlalchemy as sa
 
 
-def test_closure_targets_only_linked_2026_mission_and_keeps_history():
+def test_closure_and_reopening_target_only_linked_mission_and_keep_history(monkeypatch):
     spec = importlib.util.spec_from_file_location(
         "closure", Path("alembic/versions/0050_close_hongcheon_mission.py")
     )
@@ -35,6 +35,23 @@ def test_closure_targets_only_linked_2026_mission_and_keeps_history():
         assert connection.execute(sa.text("SELECT id,is_closed,is_published,participation_period FROM courses ORDER BY id")).all() == [
             (1, 1, 1, "2026.10.04 마감"), (2, 0, 1, None), (3, 0, 1, None),
         ]
+        assert connection.scalar(sa.text("SELECT COUNT(*) FROM collected_stamps")) == 1
+        assert connection.scalar(sa.text("SELECT COUNT(*) FROM course_stamps")) == 2
+        reopen_spec = importlib.util.spec_from_file_location(
+            "reopening", Path("alembic/versions/0051_reopen_hongcheon_mission.py")
+        )
+        reopening = importlib.util.module_from_spec(reopen_spec)
+        reopen_spec.loader.exec_module(reopening)
+        monkeypatch.setattr(reopening.op, "get_bind", lambda: connection)
+        # An unrelated closed mission must remain closed.
+        connection.execute(sa.text("UPDATE courses SET is_closed=1 WHERE id=3"))
+        reopening.upgrade()
+        reopening.upgrade()
+        reopening.downgrade()
+        assert connection.execute(sa.text("SELECT id,is_closed,is_published FROM courses ORDER BY id")).all() == [
+            (1, 0, 1), (2, 0, 1), (3, 1, 1),
+        ]
+        assert "행사 종료 후에도" in connection.scalar(sa.text("SELECT participation_period FROM courses WHERE id=1"))
         assert connection.scalar(sa.text("SELECT COUNT(*) FROM collected_stamps")) == 1
         assert connection.scalar(sa.text("SELECT COUNT(*) FROM course_stamps")) == 2
     engine.dispose()
