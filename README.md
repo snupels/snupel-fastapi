@@ -2,6 +2,8 @@
 
 강원도 스포츠 관광 패스포트 **Snupel**의 FastAPI 백엔드입니다. 회원 인증, 스포츠·관광 콘텐츠 탐색, 코스 추천, 패스포트·스탬프 수집, 인증 사진 제출, 커뮤니티 피드, 관리자 검수 기능을 제공합니다.
 
+서버 API와 DB는 이 저장소에서 관리합니다. MySQL 테이블 정의는 `app/models/`, 스키마 변경 이력은 `alembic/versions/`, DB 연결 설정은 `app/config/`에 있습니다. 화면과 정적 사이트 배포는 별도 [`snupel` 프론트엔드 저장소](https://github.com/snupels/snupel)가 담당합니다.
+
 ## 기술 스택
 
 - Python 3.12
@@ -20,8 +22,8 @@ git clone <repository-url>
 cd snupel-fastapi
 cp .env.example .env
 uv sync
-uv run alembic upgrade head
-uv run uvicorn app.main:app --reload --port 8000
+uv run --env-file .env alembic upgrade head
+uv run --env-file .env uvicorn app.main:app --reload --port 8000
 ```
 
 기본 개발 DB URL은 `mysql+aiomysql://snupel:snupel@127.0.0.1:3306/snupel`입니다. 다른 계정이나 호스트를 쓰면 `.env`의 `DATABASE_URL`을 바꾸면 됩니다.
@@ -54,23 +56,25 @@ uv run uvicorn app.main:app --reload --port 8000
 | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM` | 관리자 로그인 OTP, 계정 찾기, 비밀번호 재설정 메일 발송 설정. |
 | `DATA_GO_KR_SERVICE_KEY` | 공공데이터포털 관광·날씨 API 인증키. |
 | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_FALLBACK_MODEL` | AI 코스 추천에 사용할 OpenRouter 설정. 키가 없으면 서비스의 fallback 추천 로직을 사용합니다. |
-| `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | 인증 사진과 프로필 이미지 업로드 URL 발급에 사용할 S3 호환 스토리지 설정. |
+| `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | 인증 사진과 프로필 이미지 업로드 URL 발급에 사용할 S3 호환 스토리지 설정. AWS에서 인스턴스 역할을 사용할 때는 액세스 키 두 값을 비워 둡니다. |
 | `STAMP_IMAGE_BASE_URL` | 스탬프 이미지가 CloudFront 같은 별도 도메인으로 제공될 때 쓰는 공개 base URL. |
 
 `MAIL_HOST`와 `MAIL_PORT`의 기본값은 각각 `smtp.daum.net`, `465`입니다.
 
 ## 데이터베이스
 
+이 저장소는 SQLAlchemy 모델과 Alembic migration을 기준으로 MySQL 스키마를 관리합니다. 프론트엔드 저장소에는 DB migration이 없습니다. 운영 환경에서는 `DATABASE_URL`과 `DATABASE_SSL_CA`를 설정해 인증서와 호스트 이름을 검증하는 TLS 연결을 사용합니다.
+
 새 데이터베이스에는 모든 Alembic 마이그레이션을 적용합니다.
 
 ```bash
-uv run alembic upgrade head
+uv run --env-file .env alembic upgrade head
 ```
 
 이미 기존 스키마가 적용된 데이터베이스를 Alembic 관리 대상으로만 연결해야 할 때는 현재 head를 기준점으로 기록합니다.
 
 ```bash
-uv run alembic stamp head
+uv run --env-file .env alembic stamp head
 ```
 
 스키마를 바꾸는 기능을 추가할 때는 기존 migration을 수정하지 말고 `alembic/versions/`에 새 migration을 추가합니다.
@@ -103,7 +107,7 @@ uv run alembic stamp head
 공공데이터포털 키를 `DATA_GO_KR_SERVICE_KEY`에 설정한 뒤 실행합니다.
 
 ```bash
-uv run python -m app.jobs.sync_tourism
+uv run --env-file .env python -m app.jobs.sync_tourism
 ```
 
 동기화 작업은 국문 TourAPI, 두루누비, 강원도 스포츠 관련 파일 데이터를 읽어 `activities` 데이터를 보강합니다. 기존 산림청 산 목록 API는 폐기되어 더 이상 호출하지 않으며, 해당 캐시 행은 연결된 기록을 보존한 채 비활성화합니다. 국문 TourAPI는 첫 실행에 관광정보 동기화 목록 전체를 대조하고, 이후 매일 한국 시간 전일 `modifiedtime`의 변경분을 반영합니다. 실패한 날짜는 다음 실행에서 순서대로 재처리합니다. `showflag=0`인 콘텐츠는 사용자 화면에서 숨깁니다. 다른 소스는 검증된 전체 목록을 받은 경우에만 해당 소스의 DB 행을 대조합니다. Kakao REST API 키가 있으면 주소와 좌표 보정에도 사용합니다.
@@ -115,6 +119,8 @@ uv run python -m app.jobs.sync_tourism
 - `deploy/snupel-fastapi.service`: API 서버 systemd 서비스
 - `deploy/snupel-tourism-sync.service`: 관광 데이터 동기화 1회 실행 서비스
 - `deploy/snupel-tourism-sync.timer`: 매일 한국 시간 08:30 동기화 타이머
+
+`main`에 반영하거나 수동 실행하면 `.github/workflows/deploy.yml`이 `ruff`·`pytest`를 통과한 코드를 서버에 배포하고, 의존성 동기화·Alembic 적용 후 API 서비스와 관광 데이터 타이머를 재시작합니다. 운영 DB는 RDS에 있으며 스키마 변경은 이 저장소의 Alembic으로 적용합니다. 서버의 `.env`는 배포 파일 동기화 대상에서 제외되고, DB 백업은 RDS에서 관리합니다. 정적 프론트엔드 배포는 이 워크플로에 포함되지 않습니다.
 
 ## 관리자 화면
 
