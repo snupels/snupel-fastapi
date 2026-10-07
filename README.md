@@ -42,6 +42,7 @@ uv run uvicorn app.main:app --reload --port 8000
 | 변수 | 설명 |
 | --- | --- |
 | `DATABASE_URL` | 비동기 MySQL 연결 문자열. 개발 환경에서는 없으면 로컬 기본값을 사용합니다. |
+| `DATABASE_SSL_CA` | DB CA 인증서 묶음의 절대 경로. production에서 필수이며 서버 인증서·호스트 이름을 검증합니다. API·동기화·Alembic 연결에 공통 적용됩니다. |
 | `ENVIRONMENT` | `development` 또는 `production`. production에서는 DB URL과 충분히 긴 비밀값 검사가 강화됩니다. |
 | `JWT_SECRET` | API 액세스 토큰 서명 비밀값. production에서는 32바이트 이상이어야 합니다. |
 | `ADMIN_SESSION_SECRET` | 관리자 세션 쿠키 서명 비밀값. 없으면 `JWT_SECRET`을 사용합니다. |

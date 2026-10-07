@@ -1,4 +1,5 @@
 import os
+import ssl
 
 
 def database_url() -> str:
@@ -8,6 +9,15 @@ def database_url() -> str:
     if os.getenv("ENVIRONMENT") == "production":
         raise RuntimeError("DATABASE_URL is required in production.")
     return "mysql+aiomysql://snupel:snupel@127.0.0.1:3306/snupel"
+
+
+def database_connect_args() -> dict[str, ssl.SSLContext]:
+    ca_file = os.getenv("DATABASE_SSL_CA")
+    if not ca_file:
+        if os.getenv("ENVIRONMENT") == "production":
+            raise RuntimeError("DATABASE_SSL_CA is required in production.")
+        return {}
+    return {"ssl": ssl.create_default_context(cafile=ca_file)}
 
 
 def admins() -> set[str]:

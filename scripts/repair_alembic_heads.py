@@ -3,7 +3,7 @@ import asyncio
 from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.config import database_url
+from app.config import database_connect_args, database_url
 
 
 OVERLAPPING_REVISION_PAIRS = (
@@ -30,7 +30,7 @@ def redundant_revisions(revisions: set[str]) -> set[str]:
 
 
 async def repair_overlapping_heads() -> None:
-    engine = create_async_engine(database_url())
+    engine = create_async_engine(database_url(), connect_args=database_connect_args())
     try:
         async with engine.begin() as connection:
             has_version_table = await connection.run_sync(
