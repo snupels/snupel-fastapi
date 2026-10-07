@@ -1,8 +1,9 @@
+import ssl
 from types import SimpleNamespace
 
 import pytest
 
-from app.config import database_url
+from app.config import database_connect_args, database_url
 from app.deps.rate_limit import RateLimiter
 from app.schemas.auth import AuthProvider
 from app.services import oauth
@@ -49,3 +50,32 @@ def test_systemd_services_drop_privileges():
         assert "ProtectSystem=strict" in service
         assert "ProtectHome=read-only" in service
         assert "CapabilityBoundingSet=" in service
+
+
+def test_database_tls_configuration(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.delenv("DATABASE_SSL_CA", raising=False)
+    assert database_connect_args() == {}
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    with pytest.raises(RuntimeError, match="DATABASE_SSL_CA is required"):
+        database_connect_args()
+
+    context = ssl.create_default_context()
+    loaded = []
+    monkeypatch.setattr(
+        "app.config.ssl.create_default_context",
+        lambda *, cafile: loaded.append(cafile) or context,
+    )
+    monkeypatch.setenv("DATABASE_SSL_CA", "/etc/ssl/rds-ca.pem")
+    assert database_connect_args() == {"ssl": context}
+    assert loaded == ["/etc/ssl/rds-ca.pem"]
+    assert context.check_hostname
+    assert context.verify_mode == ssl.CERT_REQUIRED
+
+
+def test_database_tls_invalid_ca_fails_closed(monkeypatch, tmp_path):
+    ca_file = tmp_path / "invalid.pem"
+    ca_file.write_text("invalid certificate")
+    monkeypatch.setenv("DATABASE_SSL_CA", str(ca_file))
+    with pytest.raises(ssl.SSLError):
+        database_connect_args()
