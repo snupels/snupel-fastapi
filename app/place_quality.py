@@ -34,7 +34,7 @@ def gangwon_address_status(address: str | None) -> bool | None:
     text = (display_address(address) or "").strip()
     if re.match(OTHER_PROVINCE_PATTERN, text):
         return False
-    if re.match(r"^(강원특별자치도|강원도)(\s|$)", text):
+    if re.match(r"^(강원특별자치도|강원도|강원)(\s|$)", text):
         return True
     district = re.match(r"^([가-힣]+[시군])(?:\s|$)", text)
     if district:

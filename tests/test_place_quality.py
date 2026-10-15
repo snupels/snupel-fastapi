@@ -57,7 +57,7 @@ def test_explicit_outside_address_beats_description_and_bounding_box(address):
     })
 
 
-@pytest.mark.parametrize("address", ["강원특별자치도 고성군", "강원도 양양군", "강월특별자치도 철원군", "강릉시"])
+@pytest.mark.parametrize("address", ["강원특별자치도 고성군", "강원 고성군", "강원도 양양군", "강월특별자치도 철원군", "강릉시"])
 def test_gangwon_administrative_address_is_accepted_without_coordinates(address):
     assert in_gangwon({"sigun": address})
 
