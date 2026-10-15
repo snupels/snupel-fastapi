@@ -481,7 +481,7 @@ class RecommendationService:
             purposes = {stop["role"] for stop in timing}
             notes = []
             if "meal" not in purposes or "rest" not in purposes:
-                notes.append("시간·거리 조건에 맞는 식사·휴식 장소가 충분하지 않아 확인되는 장소만 구성했어요.")
+                notes.append("현재 일정에는 식사 또는 휴식 장소가 포함되지 않았어요. 여행일이나 여유 시간을 바꿔 다른 조합도 확인해 보세요.")
             if any(stop["hours_status"] == "unknown" for stop in timing):
                 notes.append("운영시간 미확인 장소가 포함되어 있어요. 출발 전 예약·휴무 여부를 확인해 주세요.")
             result |= {"travel_date": travel_day(body), "start_time": body.start_time,
@@ -578,8 +578,8 @@ class RecommendationService:
                 "summary": (item.summary or "")[:160],
                 "minutes": self._minutes(item),
                 "role": role(item),
-                "openingHours": hours_info(item)["hours"],
-                "closedDays": hours_info(item)["closed"],
+                "openingHours": hours_info(item)["hours"][:400],
+                "closedDays": hours_info(item)["closed"][:200],
                 "travelMinutesByCandidateId": {
                     str(other.id): travel
                     for other in candidates
@@ -607,6 +607,10 @@ class RecommendationService:
                 )
             )
         )
+        by_id = {item.id: item for item in candidates}
+        reference_places = [by_id[stop["activity_id"]] for stop in fallback]
+        reference_timing = schedule(reference_places, body, self._minutes, self._travel_minutes,
+                                    main_id=self._main_id(reference_places, body)) or []
         payload = {
             "models": models,
             "max_tokens": 600,
@@ -618,6 +622,9 @@ class RecommendationService:
                         "Build a realistic day trip with ONE main sports experience, one meal, "
                         "one rest/cafe and up to two nearby sightseeing stops when available. "
                         "Never tour several competing surf schools, golf courses or rental shops. "
+                        "Use feasibleReferenceRoute as a feasible baseline. If it includes meal, rest "
+                        "or sightseeing, your route MUST also include those roles. "
+                        "Do not invent opening hours, prices or reservation availability. "
                         "Do not maximize stop count. Respect travel date, closed days, opening windows "
                         "and breaks. Missing hours are unknown, not confirmed open. Always include "
                         "the requested sport when provided. Respect the time "
@@ -639,6 +646,9 @@ class RecommendationService:
                             "travelDate": str(travel_day(body)), "startTime": body.start_time,
                             "weather": weather,
                             "candidates": safe_candidates,
+                            "feasibleReferenceRoute": [{"activityId": stop["activity_id"], "role": stop["role"],
+                                                        "arrivalTime": stop["arrival_time"], "departureTime": stop["departure_time"]}
+                                                       for stop in reference_timing],
                         },
                         ensure_ascii=False,
                         default=str,
@@ -697,6 +707,14 @@ class RecommendationService:
             if not title or not description:
                 raise ValueError("AI course title or description is empty")
             stops = self._ai_stops(generated["stops"], candidates, body)
+            by_id = {item.id: item for item in candidates}
+            fallback_places = [by_id[stop["activity_id"]] for stop in fallback]
+            ai_places = [by_id[stop["activity_id"]] for stop in stops]
+            def purposes(places):
+                main_id = self._main_id(places, body)
+                return {"activity" if item.id == main_id else role(item) for item in places}
+            if not purposes(fallback_places).issubset(purposes(ai_places)):
+                raise ValueError("AI course omitted a feasible meal, rest or sightseeing role")
             return self._result(
                 stops, candidates, body, used_ai=True, title=title, description=description
             )

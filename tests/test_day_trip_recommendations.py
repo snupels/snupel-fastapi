@@ -69,7 +69,7 @@ def test_multiple_surf_schools_are_not_returned_as_a_tour():
     with pytest.raises(ValueError, match="repeats the main experience"):
         service._ai_stops([{"activityId": 1, "reason": "서핑"}, {"activityId": 2, "reason": "서핑"}], candidates, body())
     result = service._result(stops, candidates, body(), used_ai=False)
-    assert "충분하지" in result["planning_notes"][0]
+    assert "포함되지" in result["planning_notes"][0]
 
 
 def test_weekday_closure_and_event_dates_cannot_enter_an_itinerary():
@@ -202,6 +202,30 @@ def test_future_trip_does_not_use_current_weather_as_future_forecast(monkeypatch
     result = asyncio.run(RecommendationService(Repository(), Weather()).recommend(body()))
     assert result["used_ai"] is True
     assert captured["weather"] is None and captured["travelDate"] == "2026-10-20"
+
+
+def test_ai_cannot_omit_feasible_meal_or_rest(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    candidates = [place(1), place(4, "meal"), place(5, "sightseeing"), place(6, "rest")]
+    prompt = {}
+    class Repository:
+        async def recommendation_candidates(self, *_args, **_kwargs):
+            return candidates
+    class Client:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_):
+            pass
+        async def post(self, _url, **kwargs):
+            prompt.update(json.loads(kwargs["json"]["messages"][1]["content"]))
+            return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {
+                "choices": [{"message": {"content": json.dumps({"title": "서핑", "description": "체험", "stops": [{"activityId": 1, "reason": "서핑"}]})}}]
+            })
+    monkeypatch.setattr("app.services.recommendation.httpx.AsyncClient", lambda **_: Client())
+    result = asyncio.run(RecommendationService(Repository(), None).recommend(body()))
+    assert {stop["role"] for stop in result["stops"]} == {"activity", "meal", "sightseeing", "rest"}
+    assert result["used_ai"] is False
+    assert {stop["role"] for stop in prompt["feasibleReferenceRoute"]} == {"activity", "meal", "sightseeing", "rest"}
 
 
 def test_dated_api_validates_fields_auth_errors_and_serializes_timetable():
