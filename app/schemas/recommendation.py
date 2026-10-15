@@ -1,3 +1,6 @@
+from datetime import date
+from typing import Literal
+
 from pydantic import Field, field_serializer
 
 from app.models import CourseTheme
@@ -11,6 +14,9 @@ class CourseRecommendationRequest(Dto):
     region: str = Field(min_length=1, max_length=100)
     sigun: str | None = Field(default=None, max_length=100)
     sport: str | None = Field(default=None, max_length=100)
+    travel_date: date | None = Field(default=None, validation_alias="travelDate", serialization_alias="travelDate")
+    start_time: str = Field(default="09:00", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$",
+                            validation_alias="startTime", serialization_alias="startTime")
     available_minutes: int = Field(
         gt=0, le=1440, validation_alias="availableMinutes", serialization_alias="availableMinutes"
     )
@@ -29,6 +35,13 @@ class RecommendedStop(Dto):
     representative_image_url: str | None = Field(serialization_alias="representativeImageUrl")
     reason: str
     estimated_minutes: int = Field(gt=0, serialization_alias="estimatedMinutes")
+    role: Literal["activity", "meal", "sightseeing", "rest"] | None = None
+    arrival_time: str | None = Field(default=None, serialization_alias="arrivalTime")
+    departure_time: str | None = Field(default=None, serialization_alias="departureTime")
+    waiting_minutes: int | None = Field(default=None, ge=0, serialization_alias="waitingMinutes")
+    hours_status: Literal["provided", "unknown"] | None = Field(default=None, serialization_alias="hoursStatus")
+    opening_hours: str | None = Field(default=None, serialization_alias="openingHours")
+    visit_note: str | None = Field(default=None, serialization_alias="visitNote")
 
 
 class RecommendedLeg(Dto):
@@ -48,6 +61,10 @@ class CourseRecommendationResponse(Dto):
     legs: list[RecommendedLeg]
     used_ai: bool = Field(serialization_alias="usedAi")
     match_score: int = Field(ge=0, le=100, serialization_alias="matchScore")
+    travel_date: date | None = Field(default=None, serialization_alias="travelDate")
+    start_time: str | None = Field(default=None, serialization_alias="startTime")
+    waiting_minutes: int | None = Field(default=None, ge=0, serialization_alias="waitingMinutes")
+    planning_notes: list[str] | None = Field(default=None, serialization_alias="planningNotes")
 
 
 class MissionGenerationRequest(CourseRecommendationRequest):

@@ -16,7 +16,7 @@ admin_router = APIRouter(prefix="/api/admin/course-missions", tags=["Course reco
 rate_limiter = RateLimiter(10)
 
 
-@router.post("", response_model=CourseRecommendationResponse)
+@router.post("", response_model=CourseRecommendationResponse, response_model_exclude_unset=True)
 async def recommend(
     body: CourseRecommendationRequest,
     actor: LoginUser = Depends(require_user),
@@ -30,6 +30,7 @@ async def recommend(
 @admin_router.post(
     "/generate",
     response_model=MissionGenerationResponse,
+    response_model_exclude_unset=True,
     status_code=201,
     tags=["Course recommendations"],
 )
