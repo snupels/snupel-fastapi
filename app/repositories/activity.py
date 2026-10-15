@@ -3,14 +3,63 @@ from __future__ import annotations
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, exists, func, literal, or_, select, update
+from sqlalchemy import and_, case, exists, func, literal, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.models import Activity, CollectedStamp, Course, CourseStamp, Passport, Stamp, SyncState
 from app.models import ActivityCategory
 from app.repositories.base import CrudRepository, dumped
 from app.repositories.course import CourseRepository
 from app.recommendation_sports import recommendation_sport_names
+from app.place_quality import GANGWON_DISTRICTS, LITTLE_COVE_NAMES, OTHER_PROVINCE_PATTERN
+
+
+def _address_key(column):
+    value = func.coalesce(column, "")
+    for prefix in ("강월특별자치도", "강원특별자치도", "강원도"):
+        value = func.replace(value, prefix, "")
+    return func.replace(func.replace(value, " ", ""), "\t", "")
+
+
+def _discovery_quality():
+    address = func.trim(func.coalesce(Activity.address, ""))
+    district = func.trim(func.coalesce(Activity.sigun, ""))
+    outside = or_(
+        address.regexp_match(OTHER_PROVINCE_PATTERN),
+        and_(district.regexp_match(r"^[가-힣]+[시군]$"), district.not_in(GANGWON_DISTRICTS)),
+    )
+    other = aliased(Activity, name="same_place")
+    this_has_stamp = exists().where(Stamp.activity_id == Activity.id).correlate(Activity)
+    other_has_stamp = exists().where(Stamp.activity_id == other.id).correlate(other)
+    this_rank = case((Activity.source == "gangwon_marine_facility", 0), else_=1)
+    other_rank = case((other.source == "gangwon_marine_facility", 0), else_=1)
+    preferred = or_(
+        and_(other_has_stamp, ~this_has_stamp),
+        and_(other_has_stamp == this_has_stamp, or_(
+            other_rank < this_rank, and_(other_rank == this_rank, other.id < Activity.id),
+        )),
+    )
+    same_place = exists(select(other.id).where(
+        other.id != Activity.id,
+        other.category == ActivityCategory.sports,
+        other.is_active.is_(True), other.upstream_visible.is_(True),
+        or_(other.ends_at.is_(None), other.ends_at >= datetime.now(
+            ZoneInfo("Asia/Seoul")
+        ).replace(tzinfo=None)),
+        func.replace(other.place_name, " ", "").in_(LITTLE_COVE_NAMES),
+        other.sigun == Activity.sigun,
+        _address_key(other.address) == _address_key(Activity.address),
+        preferred,
+    )).correlate(Activity)
+    duplicate = and_(
+        Activity.category == ActivityCategory.sports,
+        func.replace(Activity.place_name, " ", "").in_(LITTLE_COVE_NAMES),
+        # Full building addresses only; do not merge locations known only to city/town level.
+        address.regexp_match(r"[0-9]+"),
+        same_place,
+    )
+    return and_(~outside, ~func.coalesce(duplicate, False))
 
 
 class ActivityRepository(CrudRepository):
@@ -32,6 +81,7 @@ class ActivityRepository(CrudRepository):
         now = datetime.now(ZoneInfo("Asia/Seoul")).replace(tzinfo=None)
         return and_(
             Activity.visible(),
+            _discovery_quality(),
             or_(Activity.ends_at.is_(None), Activity.ends_at >= now),
         )
 

@@ -1,9 +1,10 @@
 from typing import Self
 
-from pydantic import AnyHttpUrl, Field, model_validator
+from pydantic import AnyHttpUrl, Field, field_serializer, model_validator
 
 from app.models import ActivityCategory, CourseTheme
 from app.schemas.common import Dto, TimestampedResponse
+from app.place_quality import display_address
 
 
 class CourseCreate(Dto):
@@ -81,6 +82,10 @@ class CourseResponse(TimestampedResponse):
 
 
 class CourseItineraryStop(Dto):
+    @field_serializer("address", check_fields=False)
+    def serialize_address(self, value):
+        return display_address(value)
+
     position: int = Field(ge=0)
     stamp_id: int = Field(gt=0, serialization_alias="stampId")
     activity_id: int = Field(gt=0, serialization_alias="activityId")
