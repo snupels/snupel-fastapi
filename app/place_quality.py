@@ -13,7 +13,14 @@ OTHER_PROVINCE_PATTERN = (
     r"(\s|$)"
 )
 # Verified spelling variants at the same full address. Sharing an address alone is not a duplicate.
-LITTLE_COVE_NAMES = ("리틀코브", "양양서핑리틀코브")
+VERIFIED_PLACE_NAMES = (
+    ("리틀코브", "양양서핑리틀코브"),
+    ("모쿠서프", "양양서핑모쿠서프"),
+    ("포이푸", "포이푸서프"),
+    ("이스트사이드", "이스트사이드서프"),
+    ("포인트브레이크", "포인트브레이크서프하우스"),
+    ("서프스타", "서프스타(Surfstar)"),
+)
 
 
 def display_address(value: str | None) -> str | None:

@@ -12,7 +12,7 @@ from app.models import ActivityCategory
 from app.repositories.base import CrudRepository, dumped
 from app.repositories.course import CourseRepository
 from app.recommendation_sports import recommendation_sport_names
-from app.place_quality import GANGWON_DISTRICTS, LITTLE_COVE_NAMES, OTHER_PROVINCE_PATTERN
+from app.place_quality import GANGWON_DISTRICTS, OTHER_PROVINCE_PATTERN, VERIFIED_PLACE_NAMES
 
 
 def _address_key(column):
@@ -34,6 +34,11 @@ def _discovery_quality():
     other_has_stamp = exists().where(Stamp.activity_id == other.id).correlate(other)
     this_rank = case((Activity.source == "gangwon_marine_facility", 0), else_=1)
     other_rank = case((other.source == "gangwon_marine_facility", 0), else_=1)
+    def name_key(column):
+        compact = func.replace(column, " ", "")
+        return case(*[(compact.in_(names), names[0]) for names in VERIFIED_PLACE_NAMES],
+                    else_=compact)
+
     preferred = or_(
         and_(other_has_stamp, ~this_has_stamp),
         and_(other_has_stamp == this_has_stamp, or_(
@@ -47,14 +52,16 @@ def _discovery_quality():
         or_(other.ends_at.is_(None), other.ends_at >= datetime.now(
             ZoneInfo("Asia/Seoul")
         ).replace(tzinfo=None)),
-        func.replace(other.place_name, " ", "").in_(LITTLE_COVE_NAMES),
+        name_key(other.place_name) == name_key(Activity.place_name),
         other.sigun == Activity.sigun,
         _address_key(other.address) == _address_key(Activity.address),
         preferred,
     )).correlate(Activity)
     duplicate = and_(
         Activity.category == ActivityCategory.sports,
-        func.replace(Activity.place_name, " ", "").in_(LITTLE_COVE_NAMES),
+        func.replace(Activity.place_name, " ", "").in_(
+            [name for names in VERIFIED_PLACE_NAMES for name in names]
+        ),
         # Full building addresses only; do not merge locations known only to city/town level.
         address.regexp_match(r"[0-9]+"),
         same_place,

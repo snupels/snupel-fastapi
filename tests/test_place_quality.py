@@ -9,7 +9,7 @@ from sqlalchemy.dialects import mysql
 from app.jobs.sync_tourism import TourismSync, in_gangwon
 from app.main import app
 from app.models import Activity
-from app.place_quality import display_address, gangwon_address_status
+from app.place_quality import VERIFIED_PLACE_NAMES, display_address, gangwon_address_status
 from app.repositories.activity import ActivityRepository
 from app.schemas.activity import ActivityResponse
 from app.schemas.course import CourseItineraryStop
@@ -119,6 +119,15 @@ def test_duplicate_selection_prefers_stamp_link_and_keeps_other_branches():
     assert discovery_ids([rows[0], rows[1] | {"upstream_visible": False}]) == [1]
     assert discovery_ids([rows[0], rows[1] | {"address": "강원도 양양군 현남면 인구길 99"}]) == [1, 2]
     assert discovery_ids([row | {"address": "강원도 양양군 현남면"} for row in rows]) == [1, 2]
+
+
+@pytest.mark.parametrize("names", VERIFIED_PLACE_NAMES)
+def test_verified_name_variants_require_the_same_full_address(names):
+    rows = [{"id": 1, "place_name": names[0]},
+            {"id": 2, "place_name": names[1], "source": "gangwon_marine"}]
+    assert discovery_ids(rows) == [1]
+    assert discovery_ids([rows[0], rows[1] | {"address": "양양군 현남면 인구길 99"}]) == [1, 2]
+    assert discovery_ids([rows[0], rows[1] | {"place_name": names[0] + "카페"}]) == [1, 2]
 
 
 def test_geocoding_uses_corrected_query_but_preserves_upstream_address(monkeypatch):
