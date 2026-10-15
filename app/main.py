@@ -16,6 +16,7 @@ from .routes.course import router as courses_router
 from .routes.me import admin_router as reward_claims_router
 from .routes.me import router as me_router
 from .routes.passport import router as passports_router
+from .routes.passport_reward import router as passport_rewards_router
 from .routes.recommendation import admin_router as admin_missions_router
 from .routes.recommendation import router as recommendations_router
 from .routes.stamp_submission import router as stamp_submissions_router
@@ -88,6 +89,7 @@ for router in (
     activities_router,
     courses_router,
     passports_router,
+    passport_rewards_router,
     collected_badges_router,
     collected_stamps_router,
     stamp_submissions_router,
