@@ -16,6 +16,7 @@ from app.config.database import SessionLocal
 from app.config import admins
 from app.repositories.activity import ActivityRepository
 from app.services.mail import send_mail
+from app.place_quality import display_address, gangwon_address_status
 
 KOR_BASE = "https://apis.data.go.kr/B551011/KorService2"
 DURUNUBI_URL = "https://apis.data.go.kr/B551011/Durunubi/courseList"
@@ -547,7 +548,14 @@ def oxygen_road_item(row: dict) -> dict:
 
 
 def in_gangwon(row: dict) -> bool:
-    if "강원" in " ".join(str(value) for value in row.values() if value is not None):
+    statuses = [
+        gangwon_address_status(str(row[key]))
+        for key in ("address", "addr", "addr1", "sigun", "시군구", "주소")
+        if row.get(key)
+    ]
+    if False in statuses:
+        return False
+    if True in statuses:
         return True
     latitude = number(pick(row, "crsLat", "mapy", "lat", "latitude", "mntnLat", "mtnLat"))
     longitude = number(
@@ -699,7 +707,7 @@ class TourismSync:
             return rows
         headers = {"Authorization": f"KakaoAK {kakao_key}"}
         for row in rows:
-            address = str(row.get("address") or "").strip()
+            address = (display_address(row.get("address")) or "").strip()
             has_coordinates = row.get("latitude") is not None and row.get("longitude") is not None
             if bool(address) == has_coordinates:
                 continue

@@ -1,9 +1,10 @@
 from datetime import datetime
 from typing import Any, Self
 
-from pydantic import AnyHttpUrl, Field, model_validator
+from pydantic import AnyHttpUrl, Field, field_serializer, model_validator
 
 from app.models import ActivityCategory
+from app.place_quality import display_address
 from app.schemas.common import Dto, OrmDto, TimestampedResponse
 
 
@@ -64,6 +65,10 @@ class ActivityPatch(Dto):
 
 
 class ActivityResponse(TimestampedResponse):
+    @field_serializer("address", check_fields=False)
+    def serialize_address(self, value):
+        return display_address(value)
+
     category: ActivityCategory
     representative_image_url: str | None = Field(serialization_alias="representativeImageUrl")
     sport_name: str | None = Field(serialization_alias="sportName")

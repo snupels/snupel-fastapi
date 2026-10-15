@@ -1,8 +1,9 @@
-from pydantic import Field
+from pydantic import Field, field_serializer
 
 from app.models import CourseTheme
 from app.schemas.common import Dto
 from app.schemas.course import CourseResponse
+from app.place_quality import display_address
 
 
 class CourseRecommendationRequest(Dto):
@@ -16,6 +17,10 @@ class CourseRecommendationRequest(Dto):
 
 
 class RecommendedStop(Dto):
+    @field_serializer("address", check_fields=False)
+    def serialize_address(self, value):
+        return display_address(value)
+
     activity_id: int = Field(serialization_alias="activityId")
     place_name: str | None = Field(serialization_alias="placeName")
     address: str | None
