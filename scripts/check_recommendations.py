@@ -3,6 +3,8 @@ import asyncio
 import json
 import logging
 import time
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from app.config.database import SessionLocal, engine
 from app.repositories.activity import ActivityRepository
@@ -33,19 +35,27 @@ async def main():
     logger.handlers = [handler]
     logger.propagate = False
     logger.setLevel(logging.WARNING)
-    body = CourseRecommendationRequest(theme="healing", region="강원특별자치도", sigun="강릉시", availableMinutes=360)
+    today = datetime.now(ZoneInfo("Asia/Seoul")).date()
+    conditions = [("양양군", "marine", 360, today), ("양양군", "marine", 360, today + timedelta(days=2)),
+                  ("강릉시", None, 360, today + timedelta(days=1)), ("원주시", "golf", 480, today + timedelta(days=1))]
     runs = []
     try:
         async with SessionLocal() as session:
             service = RecommendationService(ActivityRepository(session), WeatherService())
-            for _ in range(3):
+            for sigun, sport, minutes, day in conditions:
+                body = CourseRecommendationRequest(theme="healing", region="강원특별자치도", sigun=sigun,
+                                                   sport=sport, availableMinutes=minutes, travelDate=day, startTime="09:00")
                 handler.reason = None
                 started = time.monotonic()
                 result = await service.recommend(body)
                 CourseRecommendationResponse.model_validate(result)
-                runs.append({"usedAi": result["used_ai"], "ids": [s["activity_id"] for s in result["stops"]], "minutes": result["total_estimated_minutes"], "seconds": round(time.monotonic() - started, 2), "fallback": handler.reason})
+                roles = [s["role"] for s in result["stops"]]
+                assert roles.count("activity") <= 1 and result["total_estimated_minutes"] <= minutes
+                runs.append({"region": sigun, "sport": sport, "date": str(day), "usedAi": result["used_ai"],
+                             "stops": [{k: stop[k] for k in ("activity_id", "place_name", "role", "arrival_time", "departure_time", "hours_status")} for stop in result["stops"]],
+                             "minutes": result["total_estimated_minutes"], "seconds": round(time.monotonic() - started, 2), "fallback": handler.reason})
             await session.rollback()
-        print(json.dumps({"condition": "Gangneung/healing/360", "runs": runs, "uniqueRoutes": len({tuple(r["ids"]) for r in runs})}))
+        print(json.dumps({"runs": runs}, ensure_ascii=False))
     finally:
         await engine.dispose()
 

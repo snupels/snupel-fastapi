@@ -277,11 +277,20 @@ class ActivityRepository(CrudRepository):
         ordering = [(Activity.category == ActivityCategory.sports).desc(), theme_match.desc(), Activity.id]
         if sport:
             ordering.insert(0, sport_match.desc())
-        rows = (await self.session.execute(query.order_by(*ordering).limit(limit))).all()
+        primary_limit = max(1, limit // 2) if not require_stamp else limit
+        rows = list((await self.session.execute(query.order_by(*ordering).limit(primary_limit))).all())
+        if not require_stamp:
+            # A busy surfing district must not fill every candidate slot with surf schools.
+            content_type = func.json_unquote(func.json_extract(Activity.source_metadata, "$.contenttypeid"))
+            for types, capacity in ((["39"], max(1, limit // 5)), (["12", "14"], max(1, limit - primary_limit - limit // 5))):
+                support = query.where(content_type.in_(types), Activity.category != ActivityCategory.sports)
+                rows.extend((await self.session.execute(support.order_by(*ordering).limit(capacity))).all())
+        unique = {}
         for activity, matches_theme, matches_sport in rows:
             activity.recommendation_theme_match = matches_theme
             activity.recommendation_sport_match = matches_sport
-        return [activity for activity, _, _ in rows]
+            unique[activity.id] = activity
+        return list(unique.values())
 
     async def _sync_items(self, source: str, items: list[dict], synced_at: datetime, *, full: bool) -> int:
         existing = {
