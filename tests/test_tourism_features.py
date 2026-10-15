@@ -733,6 +733,7 @@ def test_recommendation_uses_only_safe_candidates_and_validates_ai(monkeypatch, 
     assert result["stops"] == [{
         "activity_id": 4,
         "place_name": "설악산",
+        "role": "activity",
         "address": None,
         "latitude": 38.1,
         "longitude": 128.4,
