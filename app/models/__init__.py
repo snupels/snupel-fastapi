@@ -15,6 +15,9 @@ from .enums import SubmissionStatus as SubmissionStatus
 from .me import RewardClaim as RewardClaim
 from .me import SavedActivity as SavedActivity
 from .passport import Passport as Passport
+from .passport_reward import PassportRewardCampaign as PassportRewardCampaign
+from .passport_reward import PassportTeeClaim as PassportTeeClaim
+from .passport_reward import TeeClaimStatus as TeeClaimStatus
 from .stamp_catalog import StampCatalog as StampCatalog
 from .stamp_submission import StampSubmission as StampSubmission
 from .stamp_submission import FeedComment as FeedComment

@@ -184,3 +184,12 @@ alembic/           # DB 마이그레이션
 deploy/            # systemd 배포 예시
 tests/             # pytest 테스트
 ```
+
+## 자체 제작 티셔츠 신청
+
+- `GET /api/me/passport-rewards/tee`: 본인 스탬프·신청 내역과 서버 잔여 수량.
+- `POST /api/me/passport-rewards/tee/claim`: 승인되어 스탬프북에 기록된 서로 다른 스탬프 5개, 회원당 1회, 접수 완료 순 선착순 100명. 사이즈(S/M/L/XL/2XL)·수령인·연락처·우편번호·주소 및 별도 배송 동의가 필요합니다.
+- 캠페인 행 잠금과 사용자·접수 순번 고유 제약으로 동시 신청을 직렬화하고 저장 완료 후 응답합니다. 동일 회원의 재시도는 기존 접수 결과를 반환합니다. 탈퇴·배송 완료로 접수 슬롯이 다시 늘어나지는 않습니다. 스탬프·배지는 차감하지 않습니다.
+- 기존 `ADMIN_EMAILS` 관리자만 `/api/admin/passport-tee-claims` 목록 및 `PATCH /api/admin/passport-tee-claims/{id}` 배송 상태 관리를 이용합니다. 미션 심사 권한을 자동으로 확장하지 않습니다. 모든 관련 응답은 `no-store`입니다.
+- 실제 택배 발송·재고 제작은 운영자 업무입니다. API는 접수 및 requested → preparing → shipped → completed 진행 상태를 기록하며, 배송 정보는 공개 피드나 프로필에 노출하지 않습니다.
+- `TEE_TEST_MYSQL_URL`은 전용 `tee_reward_tests` DB에서만 실행하는 CI 동시성 테스트용입니다. 운영 DB에 설정하지 마세요.

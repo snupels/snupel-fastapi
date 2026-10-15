@@ -6,6 +6,21 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-only-root
+          MYSQL_DATABASE: tee_reward_tests
+          MYSQL_USER: tee_test
+          MYSQL_PASSWORD: ci-only-test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    env:
+      TEE_TEST_MYSQL_URL: mysql+aiomysql://tee_test:ci-only-test@127.0.0.1:3306/tee_reward_tests
     steps:
       - uses: actions/checkout@v4
 
