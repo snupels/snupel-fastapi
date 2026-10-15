@@ -4,11 +4,6 @@ import logging
 import math
 import os
 import random
-import time
-from datetime import datetime
-from itertools import permutations
-from urllib.parse import unquote
-from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import Depends
@@ -21,9 +16,7 @@ from app.repositories.course import CourseRepository
 from app.services.weather import WeatherService, get_weather_service
 from app.services.badge_rules import normalize_sport
 from app.recommendation_sports import recommendation_sport_names
-from app.services.course_schedule import (
-    ROLE_LABELS, hours_info, role, schedule, travel_day,
-)
+from app.services.course_roles import ROLE_LABELS, role
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_LEG_KM = 40
@@ -38,7 +31,6 @@ AI_TIMEOUT_SECONDS = 12
 DEFAULT_AI_MODEL = "deepseek/deepseek-chat-v3.1"
 DEFAULT_AI_FALLBACK_MODEL = "deepseek/deepseek-v3.1-terminus"
 CATEGORY_MINUTES = {"tour": 45, "sports": 90, "event": 60}
-HOURS_CACHE = {}
 THEME_LABELS = {
     "healing": "힐링",
     "thrill": "스릴",
@@ -288,40 +280,27 @@ class RecommendationService:
         routes = []
         for main in starts:
             support = [item for item in candidates if item.id != main.id and role(item) != "activity"]
-            # A later-opening experience can follow a morning visit or meal.
-            prefixes = [(), *[(item,) for item in support[:3]], *permutations(support[:3], 2)]
-            for prefix in prefixes:
-                ordered = [*prefix, main]
-                if not self._valid_roles(ordered, main.id):
-                    continue
-                timing = schedule(ordered, body, self._minutes, self._travel_minutes, main_id=main.id)
-                if timing is None:
-                    continue
-                while len(ordered) < 5:
-                    reachable = []
-                    purposes = {stop["role"] for stop in timing}
-                    for item in support:
-                        proposed = [*ordered, item]
-                        if item in ordered or not self._valid_roles(proposed, main.id):
-                            continue
-                        next_timing = schedule(proposed, body, self._minutes, self._travel_minutes, main_id=main.id)
-                        if next_timing is not None:
-                            reachable.append((item, next_timing))
-                    if not reachable:
-                        break
-                    chosen, timing = min(reachable, key=lambda pair: (
-                        role(pair[0]) in purposes,
-                        -self._theme_relevance(pair[0], body.theme.value),
-                        sum(stop["waiting_minutes"] for stop in pair[1]),
-                        self._distance_km(ordered[-1], pair[0]) or 0, pair[0].id,
-                    ))
-                    ordered.append(chosen)
-                routes.append((ordered, timing, main.id))
+            ordered, total = [main], self._minutes(main)
+            while len(ordered) < 5:
+                purposes = {"activity" if item.id == main.id else role(item) for item in ordered}
+                reachable = [item for item in support
+                             if item not in ordered and self._valid_roles([*ordered, item], main.id)
+                             and (segment := self._segment(ordered[-1], item)) is not None
+                             and total + segment <= body.available_minutes]
+                if not reachable:
+                    break
+                chosen = min(reachable, key=lambda item: (
+                    role(item) in purposes,
+                    -self._theme_relevance(item, body.theme.value),
+                    self._distance_km(ordered[-1], item) or 0, item.id,
+                ))
+                total += self._segment(ordered[-1], chosen)
+                ordered.append(chosen)
+            routes.append((ordered, main.id))
         if not routes:
             return []
-        ordered, timing, main_id = max(routes, key=lambda route: (
-            len({stop["role"] for stop in route[1]}), len(route[0]),
-            -sum(stop["waiting_minutes"] for stop in route[1]),
+        ordered, main_id = max(routes, key=lambda route: (
+            len({"activity" if item.id == route[1] else role(item) for item in route[0]}), len(route[0]),
             -sum(self._travel_minutes(a, b) or 0 for a, b in zip(route[0], route[0][1:])),
         ))
         return [{"activity_id": item.id, "reason": (
@@ -377,8 +356,6 @@ class RecommendationService:
         main_id = self._main_id(selected, body)
         if len(selected) > 5 or not self._valid_roles(selected, main_id):
             raise ValueError("AI course repeats the main experience or supporting role")
-        if schedule(selected, body, self._minutes, self._travel_minutes, main_id=main_id) is None:
-            raise ValueError("AI course conflicts with travel date, operating hours or time budget")
         return stops
 
     def _match_score(self, stops, candidates, body) -> int:
@@ -436,12 +413,12 @@ class RecommendationService:
     ) -> dict:
         by_id = {activity.id: activity for activity in candidates}
         selected = [by_id[stop["activity_id"]] for stop in stops]
-        timing = schedule(selected, body, self._minutes, self._travel_minutes,
-                          main_id=self._main_id(selected, body)) or []
+        main_id = self._main_id(selected, body)
         stops = [
             stop
             | {
                 "place_name": activity.place_name,
+                "role": "activity" if activity.id == main_id else role(activity),
                 "address": getattr(activity, "address", None),
                 "latitude": float(activity.latitude) if activity.latitude is not None else None,
                 "longitude": float(activity.longitude) if activity.longitude is not None else None,
@@ -460,71 +437,19 @@ class RecommendationService:
         ]
         activity_minutes = sum(stop["estimated_minutes"] for stop in stops)
         travel_minutes = sum(leg["travel_minutes"] for leg in legs)
-        waiting_minutes = sum(stop["waiting_minutes"] for stop in timing)
-        dated = body.travel_date is not None or "start_time" in body.model_fields_set
-        if dated:
-            stops = [stop | {key: value for key, value in visit.items() if key != "activity_id"}
-                     for stop, visit in zip(stops, timing)]
         fallback_title, fallback_description = self._fallback_copy(body)
         result = {
             "title": title or fallback_title,
             "description": description or fallback_description,
             "activity_minutes": activity_minutes,
             "travel_minutes": travel_minutes,
-            "total_estimated_minutes": activity_minutes + travel_minutes + waiting_minutes,
+            "total_estimated_minutes": activity_minutes + travel_minutes,
             "stops": stops,
             "legs": legs,
             "used_ai": used_ai,
             "match_score": self._match_score(stops, candidates, body),
         }
-        if dated:
-            purposes = {stop["role"] for stop in timing}
-            notes = []
-            if "meal" not in purposes or "rest" not in purposes:
-                notes.append("현재 일정에는 식사 또는 휴식 장소가 포함되지 않았어요. 여행일이나 여유 시간을 바꿔 다른 조합도 확인해 보세요.")
-            if any(stop["hours_status"] == "unknown" for stop in timing):
-                notes.append("운영시간 미확인 장소가 포함되어 있어요. 출발 전 예약·휴무 여부를 확인해 주세요.")
-            result |= {"travel_date": travel_day(body), "start_time": body.start_time,
-                       "waiting_minutes": waiting_minutes, "planning_notes": notes}
         return result
-
-    async def _enrich_hours(self, candidates):
-        key = os.getenv("DATA_GO_KR_SERVICE_KEY")
-        eligible = [item for item in candidates if getattr(item, "source", None) == "tourapi"
-                    and getattr(item, "external_id", None) and not hours_info(item)["hours"]]
-        if not key or not eligible:
-            return
-        semaphore = asyncio.Semaphore(3)
-        async def fill(client, item):
-            cache_key = str(item.external_id)
-            cached = HOURS_CACHE.get(cache_key)
-            if cached and cached[0] > time.monotonic():
-                item.recommendation_hours = cached[1]
-                return
-            content_type = str((item.source_metadata or {}).get("contenttypeid") or "")
-            if content_type not in {"12", "14", "28", "39"}:
-                return
-            try:
-                async with semaphore:
-                    response = await client.get("https://apis.data.go.kr/B551011/KorService2/detailIntro2", params={
-                        "serviceKey": unquote(key), "MobileOS": "ETC", "MobileApp": "Snupel",
-                        "_type": "json", "contentId": item.external_id, "contentTypeId": content_type,
-                    })
-                response.raise_for_status()
-                rows = (response.json()["response"]["body"].get("items") or {}).get("item", [])
-                details = rows[0] if isinstance(rows, list) and rows else rows if isinstance(rows, dict) else {}
-                item.recommendation_hours = details
-                if len(HOURS_CACHE) >= 512:
-                    HOURS_CACHE.clear()
-                HOURS_CACHE[cache_key] = (time.monotonic() + 3600, details)
-            except (httpx.HTTPError, KeyError, TypeError, ValueError, AttributeError):
-                return
-        try:
-            async with asyncio.timeout(4):
-                async with httpx.AsyncClient(timeout=3) as client:
-                    await asyncio.gather(*(fill(client, item) for item in eligible))
-        except TimeoutError:
-            return
 
     async def recommend(
         self,
@@ -542,7 +467,6 @@ class RecommendationService:
             user_id=user_id,
         )
         candidates = self._coherent_candidates(candidates, body)
-        await self._enrich_hours(candidates)
         fallback = self._fallback(candidates, body)
         api_key = os.getenv("OPENROUTER_API_KEY")
         if not api_key:
@@ -560,7 +484,7 @@ class RecommendationService:
             None,
         )
         weather = None
-        if located and (body.travel_date is None or body.travel_date == datetime.now(ZoneInfo("Asia/Seoul")).date()):
+        if located:
             try:
                 async with asyncio.timeout(WEATHER_TIMEOUT_SECONDS):
                     weather = await self.weather.forecast(
@@ -578,8 +502,6 @@ class RecommendationService:
                 "summary": (item.summary or "")[:160],
                 "minutes": self._minutes(item),
                 "role": role(item),
-                "openingHours": hours_info(item)["hours"][:400],
-                "closedDays": hours_info(item)["closed"][:200],
                 "travelMinutesByCandidateId": {
                     str(other.id): travel
                     for other in candidates
@@ -609,8 +531,7 @@ class RecommendationService:
         )
         by_id = {item.id: item for item in candidates}
         reference_places = [by_id[stop["activity_id"]] for stop in fallback]
-        reference_timing = schedule(reference_places, body, self._minutes, self._travel_minutes,
-                                    main_id=self._main_id(reference_places, body)) or []
+        reference_main_id = self._main_id(reference_places, body)
         payload = {
             "models": models,
             "max_tokens": 600,
@@ -625,8 +546,8 @@ class RecommendationService:
                         "Use feasibleReferenceRoute as a feasible baseline. If it includes meal, rest "
                         "or sightseeing, your route MUST also include those roles. "
                         "Do not invent opening hours, prices or reservation availability. "
-                        "Do not maximize stop count. Respect travel date, closed days, opening windows "
-                        "and breaks. Missing hours are unknown, not confirmed open. Always include "
+                        "Do not schedule clock times or validate opening hours, closures or breaks. "
+                        "Do not claim a place is open at a specific time. Always include "
                         "the requested sport when provided. Respect the time "
                         "limit including travel, and write a Korean course title, description, and "
                         "specific reasons. "
@@ -643,12 +564,11 @@ class RecommendationService:
                             "sigun": body.sigun,
                             "sport": body.sport,
                             "availableMinutes": body.available_minutes,
-                            "travelDate": str(travel_day(body)), "startTime": body.start_time,
                             "weather": weather,
                             "candidates": safe_candidates,
-                            "feasibleReferenceRoute": [{"activityId": stop["activity_id"], "role": stop["role"],
-                                                        "arrivalTime": stop["arrival_time"], "departureTime": stop["departure_time"]}
-                                                       for stop in reference_timing],
+                            "feasibleReferenceRoute": [{"activityId": item.id,
+                                                        "role": "activity" if item.id == reference_main_id else role(item)}
+                                                       for item in reference_places],
                         },
                         ensure_ascii=False,
                         default=str,
